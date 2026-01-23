@@ -109,10 +109,3 @@ python app.py
 - **Storage**: Git repository (seen_jobs.json)
 - **API**: LinkedIn public job search, Telegram Bot API
 
-## 🤝 Contributing
-
-Feel free to fork and customize for your own job search needs!
-
-## 📄 License
-
-MIT License - feel free to use and modify!
