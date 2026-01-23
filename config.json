@@ -1,0 +1,46 @@
+{
+  "telegram_token": "8453820857:AAFdr0KHiCe5P79eL9pf_4dQrV8v9xTGEJM",
+  "telegram_chat_id": "5919083312",
+  "target_companies": [
+    "JP Morgan",
+    "Microsoft",
+    "Intuit",
+    "ServiceNow",
+    "Adobe",
+    "Paypal",
+    "Apple",
+    "Netflix",
+    "Atlassian",
+    "Salesforce",
+    "Airbnb",
+    "LinkedIn",
+    "Nvidia",
+    "Dropbox",
+    "Stripe",
+    "Razorpay",
+    "Cred",
+    "PhonePe",
+    "Wells Fargo",
+    "Booking Holdings",
+    "BookMyShow",
+    "MakeMyTrip",
+    "Blinkit",
+    "Zomato",
+    "Myntra",
+    "NetApp",
+    "AMD",
+    "Flipkart", 
+    "Qualcomm",
+    "Rippling",
+    "Harness", 
+    "Crossover"
+  ],
+  "companies": [
+    {
+      "name": "LinkedIn Jobs - Bengaluru",
+      "career_page": "https://www.linkedin.com/jobs/search/?location=Bengaluru%2C%20India&keywords=devops%20OR%20devsecops%20OR%20infrastructure%20OR%20%22site%20reliability%22%20OR%20%22cloud%20security%22&f_I=96&f_E=2%2C3&f_TPR=r36000",
+      "keywords": ["devops", "devsecops", "infrastructure", "site reliability", "cloud security"],
+      "is_linkedin": true
+    }
+  ]
+}
