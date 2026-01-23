@@ -5,6 +5,9 @@ on:
     - cron: '*/10 * * * *'  # Every 10 minutes
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   track-jobs:
     runs-on: ubuntu-latest
