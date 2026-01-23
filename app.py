@@ -98,7 +98,6 @@ def main():
     
     save_seen(new_seen)
     print("Done")
-    print(f"\n✅ Job check completed! Total seen jobs: {len(new_seen_jobs)}")
 
 if __name__ == "__main__":
     main()
