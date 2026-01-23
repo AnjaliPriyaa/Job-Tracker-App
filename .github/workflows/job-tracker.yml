@@ -2,8 +2,8 @@ name: Job Tracker
 
 on:
   schedule:
-    - cron: '*/10 * * * *'  # Every 10 minutes
-  workflow_dispatch:  # Allow manual trigger
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,35 +11,22 @@ permissions:
 jobs:
   track-jobs:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-        
-    - name: Install dependencies
-      run: |
-        pip install requests beautifulsoup4
-        
-    - name: Run job tracker
+    - run: pip install requests beautifulsoup4
+    - run: python app.py
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python app.py
-      
-    - name: Commit updated seen_jobs.json
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
+    - run: |
+        git config user.email "actions@github.com"
+        git config user.name "GitHub Actions"
         git add seen_jobs.json
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update seen_jobs.json [skip ci]"
-        
-    - name: Push changes
-      uses: ad-m/github-push-action@master
+        git diff --quiet || git commit -m "update jobs"
+    - uses: ad-m/github-push-action@master
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         branch: ${{ github.ref }}

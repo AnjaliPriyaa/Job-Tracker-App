@@ -5,109 +5,99 @@ import requests
 from bs4 import BeautifulSoup
 
 def load_config():
-    with open("config.json", "r") as f:
+    with open("config.json") as f:
         config = json.load(f)
-    # Override with environment variables if available
-    config["telegram_token"] = os.environ.get("TELEGRAM_TOKEN", config.get("telegram_token"))
-    config["telegram_chat_id"] = os.environ.get("TELEGRAM_CHAT_ID", config.get("telegram_chat_id"))
+    config["telegram_token"] = os.getenv("TELEGRAM_TOKEN", config.get("telegram_token"))
+    config["telegram_chat_id"] = os.getenv("TELEGRAM_CHAT_ID", config.get("telegram_chat_id"))
     return config
 
-def load_seen_jobs():
+def load_seen():
     if os.path.exists("seen_jobs.json"):
-        with open("seen_jobs.json", "r") as f:
+        with open("seen_jobs.json") as f:
             return set(json.load(f))
     return set()
 
-def save_seen_jobs(seen_jobs):
+def save_seen(jobs):
     with open("seen_jobs.json", "w") as f:
-        json.dump(list(seen_jobs), f)
+        json.dump(list(jobs), f)
 
-def send_telegram_message(token, chat_id, message):
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {"chat_id": chat_id, "text": message}
+def send_telegram(token, chat, msg):
     try:
-        requests.post(url, data=data, timeout=5)
-    except Exception as e:
-        print(f"Failed to send Telegram message: {e}")
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": chat, "text": msg},
+            timeout=5
+        )
+    except:
+        pass
 
-def fetch_jobs(url, is_linkedin=False):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
+def fetch_page(url):
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        return response.text
-    except Exception as e:
-        print(f"Failed to fetch {url}: {e}")
+        r = requests.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }, timeout=10)
+        r.raise_for_status()
+        return r.text
+    except:
         return None
 
-def parse_jobs(html, keywords, is_linkedin=False, target_companies=None):
+def parse_linkedin(html, keywords, companies):
     soup = BeautifulSoup(html, "html.parser")
     jobs = []
     
-    if is_linkedin:
-        job_cards = soup.find_all("div", class_="base-card")
-        for card in job_cards:
-            # Skip promoted jobs
-            if card.find("span", class_="result-benefits__text") or card.find(string=re.compile(r"Promoted", re.IGNORECASE)):
-                continue
-                
-            title_elem = card.find("h3", class_="base-search-card__title")
-            job_id_elem = card.find("a", class_="base-card__full-link")
-            company_elem = card.find("h4", class_="base-search-card__subtitle")
+    for card in soup.find_all("div", class_="base-card"):
+        if card.find("span", class_="result-benefits__text"):
+            continue
+        if card.find(string=re.compile(r"Promoted", re.I)):
+            continue
             
-            if not (title_elem and job_id_elem):
-                continue
-                
-            title = title_elem.get_text(strip=True)
-            company_name = company_elem.get_text(strip=True) if company_elem else ""
+        title_elem = card.find("h3", class_="base-search-card__title")
+        link_elem = card.find("a", class_="base-card__full-link")
+        company_elem = card.find("h4", class_="base-search-card__subtitle")
+        
+        if not (title_elem and link_elem):
+            continue
             
-            if not any(kw.lower() in title.lower() for kw in keywords):
-                continue
-            
-            if target_companies and not any(c.lower() in company_name.lower() for c in target_companies):
-                continue
-            
-            match = re.search(r'-(\d+)(?:\?|$)', job_id_elem.get("href", ""))
-            if match:
-                job_id = match.group(1)
-                job_url = f"https://www.linkedin.com/jobs/view/{job_id}"
-                jobs.append((title, job_url, company_name))
+        title = title_elem.get_text(strip=True)
+        company = company_elem.get_text(strip=True) if company_elem else ""
+        
+        if not any(k.lower() in title.lower() for k in keywords):
+            continue
+        
+        if companies and not any(c.lower() in company.lower() for c in companies):
+            continue
+        
+        job_id = re.search(r'-(\d+)(?:\?|$)', link_elem.get("href", ""))
+        if job_id:
+            url = f"https://www.linkedin.com/jobs/view/{job_id.group(1)}"
+            jobs.append((title, url, company))
     
     return jobs
 
 def main():
-    print("🔍 Job Tracker Started")
+    print("Starting job check...")
     config = load_config()
-    seen_jobs = load_seen_jobs()
-    new_seen_jobs = set(seen_jobs)
-    target_companies = config.get("target_companies", [])
-    print(f"📋 Tracking {len(target_companies)} companies | {len(seen_jobs)} jobs already seen")
-
-    for company in config["companies"]:
-        print(f"\n🌐 Checking: {company['name']}")
-        html = fetch_jobs(company["career_page"], company.get("is_linkedin", False))
+    seen = load_seen()
+    new_seen = set(seen)
+    targets = config.get("target_companies", [])
+    
+    for source in config["companies"]:
+        html = fetch_page(source["career_page"])
         if not html:
-            print("   ❌ Failed to fetch jobs")
             continue
-
-        jobs = parse_jobs(html, company["keywords"], company.get("is_linkedin", False), target_companies)
-        print(f"   ✅ Found {len(jobs)} matching jobs")
         
-        new_jobs_count = 0
-        for title, link, company_name in jobs:
-            if link not in seen_jobs:
-                print(f"   🆕 NEW: {title} @ {company_name}")
-                message = f"🎯 New Job Opening\n\n{title}\n\nCompany: {company_name}\n\n📍 {company['name']}\n\n🔗 {link}"
-                send_telegram_message(config["telegram_token"], config["telegram_chat_id"], message)
-                new_seen_jobs.add(link)
-                new_jobs_count += 1
+        jobs = parse_linkedin(html, source["keywords"], targets)
+        print(f"Found {len(jobs)} jobs")
         
-        if new_jobs_count == 0 and len(jobs) > 0:
-            print(f"   ℹ️  All {len(jobs)} jobs already seen")
-
-    save_seen_jobs(new_seen_jobs)
+        for title, link, company in jobs:
+            if link not in seen:
+                print(f"New: {title} @ {company}")
+                msg = f"🎯 {title}\n\nCompany: {company}\n\n🔗 {link}"
+                send_telegram(config["telegram_token"], config["telegram_chat_id"], msg)
+                new_seen.add(link)
+    
+    save_seen(new_seen)
+    print("Done")
     print(f"\n✅ Job check completed! Total seen jobs: {len(new_seen_jobs)}")
 
 if __name__ == "__main__":
