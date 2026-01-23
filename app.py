@@ -78,25 +78,37 @@ def parse_jobs(html, keywords, is_linkedin=False, target_companies=None):
     return jobs
 
 def main():
+    print("🔍 Job Tracker Started")
     config = load_config()
     seen_jobs = load_seen_jobs()
     new_seen_jobs = set(seen_jobs)
     target_companies = config.get("target_companies", [])
+    print(f"📋 Tracking {len(target_companies)} companies | {len(seen_jobs)} jobs already seen")
 
     for company in config["companies"]:
+        print(f"\n🌐 Checking: {company['name']}")
         html = fetch_jobs(company["career_page"], company.get("is_linkedin", False))
         if not html:
+            print("   ❌ Failed to fetch jobs")
             continue
 
         jobs = parse_jobs(html, company["keywords"], company.get("is_linkedin", False), target_companies)
+        print(f"   ✅ Found {len(jobs)} matching jobs")
         
+        new_jobs_count = 0
         for title, link, company_name in jobs:
             if link not in seen_jobs:
+                print(f"   🆕 NEW: {title} @ {company_name}")
                 message = f"🎯 New Job Opening\n\n{title}\n\nCompany: {company_name}\n\n📍 {company['name']}\n\n🔗 {link}"
                 send_telegram_message(config["telegram_token"], config["telegram_chat_id"], message)
                 new_seen_jobs.add(link)
+                new_jobs_count += 1
+        
+        if new_jobs_count == 0 and len(jobs) > 0:
+            print(f"   ℹ️  All {len(jobs)} jobs already seen")
 
     save_seen_jobs(new_seen_jobs)
+    print(f"\n✅ Job check completed! Total seen jobs: {len(new_seen_jobs)}")
 
 if __name__ == "__main__":
     main()
