@@ -45,6 +45,12 @@ def parse_jobs(url, keywords, target_companies):
         if card.find("span", class_="result-benefits__text"):
             continue
         
+        full_text = card.get_text()
+        
+        # only jobs with under 100 applicants
+        if "over" in full_text.lower() and ("applicant" in full_text.lower() or "people clicked" in full_text.lower()):
+            continue
+        
         title_tag = card.find("h3", class_="base-search-card__title")
         company_tag = card.find("h4", class_="base-search-card__subtitle")
         link_tag = card.find("a", class_="base-card__full-link")
