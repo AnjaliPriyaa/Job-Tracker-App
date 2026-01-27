@@ -1,4 +1,5 @@
 {
+  "use_ai_search": true,
   "target_companies": [
     "JP Morgan",
     "Microsoft",
@@ -31,13 +32,14 @@
     "Qualcomm",
     "Rippling",
     "Harness", 
-    "Crossover"
+    "Okta",
+    "Autodesk"
   ],
   "companies": [
     {
       "name": "LinkedIn Jobs - Bengaluru",
-      "career_page": "https://www.linkedin.com/jobs/search/?location=Bengaluru%2C%20India&keywords=devops%20OR%20devsecops%20OR%20infrastructure%20OR%20%22site%20reliability%22%20OR%20%22cloud%20security%22&f_I=96&f_E=2%2C3&f_TPR=r36000",
-      "keywords": ["devops", "devsecops", "infrastructure", "site reliability", "cloud security"],
+      "career_page": "https://www.linkedin.com/jobs/search/?location=Bengaluru%2C%20India&keywords=devops%20OR%20devsecops%20OR%20infrastructure%20OR%20%22site%20reliability%22%20OR%20%22cloud%20security%22%20OR%20sre%20OR%20%22platform%20engineer%22%20OR%20%22cloud%20engineer%22&f_TPR=r36000",
+      "keywords": ["devops", "devsecops", "infrastructure", "site reliability", "cloud security", "sre", "platform engineer", "cloud engineer", "infrastructure as code", "iac", "kubernetes", "aws", "azure", "gcp", "ansible", "terraform", "github actions", "harness"],
       "is_linkedin": true
     }
   ]

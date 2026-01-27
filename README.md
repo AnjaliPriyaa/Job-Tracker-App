@@ -1,39 +1,39 @@
-# 🎯 Job Tracker – Automated LinkedIn Job Monitor
+# Job Tracker
 
-A lightweight automation tool that continuously monitors LinkedIn for relevant job openings and sends instant alerts so you never miss an opportunity.
+Automatically checks LinkedIn for DevOps jobs and sends alerts to Telegram when new positions are posted.
 
----
+## What it does
 
-## 🧠 What This Application Does
+Scrapes LinkedIn job listings for DevOps/SRE roles at target companies in Bengaluru. Uses AI to check if jobs match your profile, then sends new matches to Telegram.
 
-- Periodically scans LinkedIn for new job postings using predefined role keywords.
-- Focuses only on DevOps, Infrastructure, Cloud, and Security-related roles.
-- Filters jobs from a fixed list of selected product-based companies.
-- Restricts results to Bengaluru-based positions.
-- Matches roles requiring 0–5 years of experience.
-- Considers only recently posted jobs and ignores older listings.
-- Tracks previously notified jobs to avoid duplicate alerts.
-- Sends real-time job notifications to Telegram with role details and application links.
-- Runs fully automatically using GitHub Actions with no server or manual intervention.
+## How it works
 
----
+- Runs every 20 minutes via GitHub Actions
+- Scrapes LinkedIn for jobs matching keywords (devops, sre, platform engineer, etc)
+- Filters by target companies (Adobe, Microsoft, Flipkart, etc)
+- Uses Google Gemini AI to check if job matches your profile and experience level
+- Sends new jobs to Telegram
+- Keeps track of already-seen jobs to avoid duplicates
 
-## 🛠️ Tech Stack Used
+## Setup
 
-- **Language:** Python  
-- **Automation:** GitHub Actions (cron-based scheduling)  
-- **Data Fetching:** LinkedIn public job listings  
-- **Notifications:** Telegram Bot API  
-- **Storage:** JSON file tracked in GitHub (`seen_jobs.json`)  
-- **Parsing & Requests:** Requests, BeautifulSoup  
-- **Platform:** GitHub (free tier)
+1. Add secrets to GitHub repo settings (TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY)
 
----
+2. Update `config.json` with your target companies and keywords
 
-## ⚙️ How It Runs
+3. Edit `ai.py` to set your role, experience, and skills
 
-The workflow executes on a schedule, fetches new jobs, applies filters, checks for duplicates, and sends alerts—completely hands-free.
+## Tech
 
----
+- Python with requests and BeautifulSoup for scraping
+- Google Gemini for AI job matching
+- Telegram for notifications
+- GitHub Actions for scheduling
 
-Built as a practical automation project to demonstrate real-world problem solving, clean filtering logic, and production-style automation.
+## Latest Changes (v2)
+
+- Added AI-powered job matching using Gemini
+- Simplified code and output
+- Better filtering for senior roles (no junior, no manager/director)
+- Cleaner console output
+- AI falls back to keyword matching if API fails

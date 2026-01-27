@@ -21,5 +21,5 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Local config (keep template in repo)
-# config.json will stay in repo but secrets will be in GitHub Secrets
+# Environment variables (contains secrets)
+.env
