@@ -2,6 +2,7 @@
   "use_ai_search": true,
   "target_companies": [
     "JP Morgan",
+    "Google",
     "Microsoft",
     "Intuit",
     "ServiceNow",
