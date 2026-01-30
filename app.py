@@ -10,7 +10,6 @@ from ai import match_job, PROFILE
 load_dotenv()
 
 SEEN_JOBS_FILE = "seen_jobs.json"
-ALERTS_FILE = "job_alerts.json"
 CLEANUP_META_FILE = "cleanup_meta.json"
 CLEANUP_DAYS = 10
 
@@ -36,7 +35,6 @@ def check_and_cleanup():
     
     if now - datetime.fromisoformat(last) >= timedelta(days=CLEANUP_DAYS):
         save_json(SEEN_JOBS_FILE, [])
-        save_json(ALERTS_FILE, [])
         save_json(CLEANUP_META_FILE, {"last_cleanup": now.isoformat()})
         print("🧹 Cleanup done (10 days)\n")
 
@@ -101,7 +99,6 @@ def main():
     
     config = load_json("config.json")
     seen_urls = set(load_json(SEEN_JOBS_FILE))
-    alerts = load_json(ALERTS_FILE)
     
     print(f"Job Tracker ({PROFILE['role']})\n")
     
@@ -121,13 +118,10 @@ def main():
                 
                 msg = f"New Job: {job['title']}\nCompany: {job['company']}\n{job['url']}"
                 send_telegram(msg)
-                
-                alerts.append({**job, "sent_at": datetime.utcnow().isoformat()})
                 print(f"  ✅ NEW: {job['title']} at {job['company']}")
         print()
     
     save_json(SEEN_JOBS_FILE, list(seen_urls))
-    save_json(ALERTS_FILE, alerts)
     print(f"Done. {total} jobs, {new} new.")
 
 if __name__ == "__main__":
