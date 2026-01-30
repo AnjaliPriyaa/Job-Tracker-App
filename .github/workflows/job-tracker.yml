@@ -25,7 +25,7 @@ jobs:
     - run: |
         git config user.email "actions@github.com"
         git config user.name "GitHub Actions"
-        git add seen_jobs.json
+        git add seen_jobs.json job_alerts.json cleanup_meta.json
         git diff --staged --quiet || git commit -m "update jobs"
     - uses: ad-m/github-push-action@master
       with:
