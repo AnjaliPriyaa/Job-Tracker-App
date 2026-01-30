@@ -23,7 +23,4 @@ Thumbs.db
 
 # Environment variables (contains secrets)
 .env
-
-# Test files
-test_*.py
-test_cleanup.py
+.venv

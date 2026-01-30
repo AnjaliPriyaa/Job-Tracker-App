@@ -45,8 +45,8 @@
   "companies": [
     {
       "name": "LinkedIn Jobs - Bengaluru",
-      "career_page": "https://www.linkedin.com/jobs/search/?location=Bengaluru%2C%20India&keywords=devops%20OR%20devsecops%20OR%20infrastructure%20OR%20%22site%20reliability%22%20OR%20%22cloud%20security%22%20OR%20sre%20OR%20%22platform%20engineer%22%20OR%20%22cloud%20engineer%22&f_TPR=r1000",
-      "keywords": ["devops", "devsecops", "infrastructure", "site reliability", "cloud security", "sre", "platform engineer", "cloud engineer", "infrastructure as code", "iac", "kubernetes", "aws", "azure", "gcp", "ansible", "terraform", "github actions", "harness"],
+      "career_page": "https://www.linkedin.com/jobs/search/?location=Bengaluru%2C%20India&keywords=(%22software%20engineer%22%20OR%20devops%20OR%20devsecops%20OR%20infrastructure%20OR%20%22site%20reliability%22%20OR%20%22cloud%20security%22%20OR%20sre%20OR%20%22platform%20engineer%22%20OR%20%22cloud%20engineer%22)%20AND%20(devops%20OR%20kubernetes%20OR%20aws%20OR%20azure%20OR%20terraform%20OR%20ansible)&f_TPR=r54000&f_E=3%2C4",
+      "keywords": ["devops", "devsecops", "infrastructure", "site reliability", "cloud security", "sre", "platform engineer", "cloud engineer", "software engineer", "infrastructure as code", "iac", "kubernetes", "aws", "azure", "gcp", "ansible", "terraform", "github actions", "harness"],
       "is_linkedin": true
     }
   ]
