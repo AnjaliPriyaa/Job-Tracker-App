@@ -78,7 +78,7 @@ def get_job_details(url):
     except:
         return None
 
-def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, exclude_keywords):
+def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, exclude_keywords, config):
     try:
         resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -102,6 +102,15 @@ def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, 
         if not any(tc.lower() in company.lower() for tc in target_companies):
             continue
         
+        # Pre-filter: Check if title contains excluded roles (manager, director, etc.)
+        title_lower = title.lower()
+        if any(role in title_lower for role in exclude_roles):
+            continue
+        
+        # Pre-filter: Check if title contains excluded levels (junior, intern, etc.)
+        if any(level in title_lower for level in exclude_levels):
+            continue
+        
         # Extract job URL
         job_id = re.search(r'-(\d+)(?:\?|$)', link_tag.get("href", ""))
         if not job_id:
@@ -123,7 +132,7 @@ def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, 
         print(f"  Excluded keywords check - Junior: {any(role in description for role in exclude_levels)}, Lead: {any(role in description for role in exclude_roles)}")
         
         # AI filter with full description (60% confidence min)
-        match, confidence, reason = match_job(title, company, keywords, target_companies, description, exclude_keywords)
+        match, confidence, reason = match_job(title, company, keywords, target_companies, description, exclude_keywords, exclude_roles, exclude_levels, config.get('experience_years', 5))
         print(f"  AI Result: Match={match}, Confidence={confidence}")
         print(f"  Reason: {reason}")
         
@@ -156,7 +165,8 @@ def main():
             config["target_companies"],
             config["exclude_roles"],
             config["exclude_levels"],
-            config["exclude_keywords"]
+            config["exclude_keywords"],
+            config
         )
         
         print(f"  Found {len(jobs)} jobs")
