@@ -177,7 +177,7 @@ def main():
                 seen_urls.add(job["url"])
                 
                 msg = f"New Job: {job['title']}\nCompany: {job['company']}\n{job['url']}"
-                # send_telegram(msg)
+                send_telegram(msg)
                 print(f"  NEW: {job['title']} at {job['company']}")
         print()
     
