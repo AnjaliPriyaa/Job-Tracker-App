@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from ai import match_job, PROFILE
+from ai import match_job
 
 load_dotenv()
 
@@ -48,7 +48,33 @@ def send_telegram(msg):
     except:
         pass
 
-def scrape_jobs(url, keywords, target_companies):
+def get_job_details(url):
+    """Fetch full job description from job page"""
+    try:
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        
+        # Try multiple selectors for full description
+        desc_div = (
+            soup.find("div", class_="show-more-less-html__markup") or
+            soup.find("div", class_="description__text") or
+            soup.find("article", class_="jobs-description__container")
+        )
+        
+        if not desc_div:
+            return None
+        
+        # Get full text with line breaks preserved
+        description = desc_div.get_text(separator="\n", strip=True).lower()
+        # print(f"\n=== FULL DESCRIPTION ({len(description)} chars) ===")
+        # print(description)
+        # print("=== END DESCRIPTION ===\n")
+        
+        return {"description": description}
+    except:
+        return None
+
+def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, exclude_keywords):
     try:
         resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -79,16 +105,43 @@ def scrape_jobs(url, keywords, target_companies):
         if not any(tc.lower() in company.lower() for tc in target_companies):
             continue
         
-        # AI filter (60% confidence min)
-        match, confidence, _ = match_job(title, company, keywords, target_companies)
+        # Extract job URL
+        job_id = re.search(r'-(\d+)(?:\?|$)', link_tag.get("href", ""))
+        if not job_id:
+            continue
+        
+        job_url = f"https://www.linkedin.com/jobs/view/{job_id.group(1)}"
+        
+        # Get full job details
+        details = get_job_details(job_url)
+        if not details:
+            continue
+        
+        description = details["description"]
+        
+        # Skip if junior or lead roles (from config)
+        if any(role in description for role in exclude_levels):
+            continue
+        if any(role in description for role in exclude_roles):
+            continue
+        
+        # Log details before AI check
+        print(f"\n  Checking: {title} at {company}")
+        print(f"  URL: {job_url}")
+        print(f"  Description preview: {description[:200]}...")
+        print(f"  Excluded keywords check - Junior: {any(role in description for role in exclude_levels)}, Lead: {any(role in description for role in exclude_roles)}")
+        
+        # AI filter with full description (60% confidence min)
+        match, confidence, reason = match_job(title, company, keywords, target_companies, description, exclude_keywords)
+        print(f"  AI Result: Match={match}, Confidence={confidence}")
+        print(f"  Reason: {reason}")
+        
         if match and confidence >= 0.6:
-            job_id = re.search(r'-(\d+)(?:\?|$)', link_tag.get("href", ""))
-            if job_id:
-                jobs.append({
-                    "title": title,
-                    "company": company,
-                    "url": f"https://www.linkedin.com/jobs/view/{job_id.group(1)}"
-                })
+            jobs.append({
+                "title": title,
+                "company": company,
+                "url": job_url
+            })
     
     return jobs
 
@@ -100,13 +153,20 @@ def main():
     config = load_json("config.json")
     seen_urls = set(load_json(SEEN_JOBS_FILE))
     
-    print(f"Job Tracker ({PROFILE['role']})\n")
+    print(f"Job Tracker ({config['role']})\n")
     
     total, new = 0, 0
     
     for search in config["companies"]:
         print(f"Searching: {search['name']}")
-        jobs = scrape_jobs(search["career_page"], search["keywords"], config["target_companies"])
+        jobs = scrape_jobs(
+            search["career_page"], 
+            search["keywords"], 
+            config["target_companies"],
+            config["exclude_roles"],
+            config["exclude_levels"],
+            config["exclude_keywords"]
+        )
         
         print(f"  Found {len(jobs)} jobs")
         total += len(jobs)
@@ -117,8 +177,8 @@ def main():
                 seen_urls.add(job["url"])
                 
                 msg = f"New Job: {job['title']}\nCompany: {job['company']}\n{job['url']}"
-                send_telegram(msg)
-                print(f"  ✅ NEW: {job['title']} at {job['company']}")
+                # send_telegram(msg)
+                print(f"  NEW: {job['title']} at {job['company']}")
         print()
     
     save_json(SEEN_JOBS_FILE, list(seen_urls))

@@ -1,5 +1,10 @@
 {
   "use_ai_search": true,
+  "role": "Senior DevOps Engineer",
+  "experience_years": 5,
+  "exclude_roles": ["principal", "staff", "manager", "director", "vp"],
+  "exclude_levels": ["junior", "entry level", "intern"],
+  "exclude_keywords": ["frontend", "ux design", "team lead", "tech lead", "architect", "head of"],
   "target_companies": [
     "Adobe",
     "Airbnb",

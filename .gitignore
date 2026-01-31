@@ -24,3 +24,5 @@ Thumbs.db
 # Environment variables (contains secrets)
 .env
 .venv
+
+test.py
