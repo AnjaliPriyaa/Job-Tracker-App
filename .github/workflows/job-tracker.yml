@@ -12,22 +12,28 @@ jobs:
   track-jobs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Setup Python
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    - run: pip install requests beautifulsoup4 python-dotenv google-genai
-    - run: python app.py
+    - name: Install dependencies
+      run: pip install requests beautifulsoup4 python-dotenv google-genai
+    - name: Run job tracker
+      run: python app.py
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    - run: |
+    - name: Commit changes
+      run: |
         git config user.email "actions@github.com"
         git config user.name "GitHub Actions"
         git add seen_jobs.json cleanup_meta.json
         git diff --staged --quiet || git commit -m "update jobs"
-    - uses: ad-m/github-push-action@master
+    - name: Push changes
+      uses: ad-m/github-push-action@master
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         branch: ${{ github.ref }}

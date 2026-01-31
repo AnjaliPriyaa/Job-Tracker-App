@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -25,7 +25,7 @@ def save_json(path, data):
         json.dump(data, f)
 
 def check_and_cleanup():
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     meta = load_json(CLEANUP_META_FILE, default={})
     last = meta.get("last_cleanup")
     
@@ -83,23 +83,16 @@ def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, 
     
     jobs = []
     for card in soup.find_all("div", class_="base-card"):
-        # Skip promoted and popular jobs
-        if card.find("span", class_="result-benefits__text"):
-            continue
-        text = card.get_text().lower()
-        if "over" in text and ("applicant" in text or "people clicked" in text):
-            continue
-        
         # Get job info
         title_tag = card.find("h3", class_="base-search-card__title")
         company_tag = card.find("h4", class_="base-search-card__subtitle")
         link_tag = card.find("a", class_="base-card__full-link")
         
-        if not title_tag or not link_tag:
+        if not title_tag or not link_tag or not company_tag:
             continue
         
         title = title_tag.get_text(strip=True)
-        company = company_tag.get_text(strip=True) if company_tag else ""
+        company = company_tag.get_text(strip=True)
         
         # Filter by target company
         if not any(tc.lower() in company.lower() for tc in target_companies):
@@ -118,12 +111,6 @@ def scrape_jobs(url, keywords, target_companies, exclude_roles, exclude_levels, 
             continue
         
         description = details["description"]
-        
-        # Skip if junior or lead roles (from config)
-        if any(role in description for role in exclude_levels):
-            continue
-        if any(role in description for role in exclude_roles):
-            continue
         
         # Log details before AI check
         print(f"\n  Checking: {title} at {company}")
@@ -157,7 +144,7 @@ def main():
     
     total, new = 0, 0
     
-    for search in config["companies"]:
+    for search in config["job_portals"]:
         print(f"Searching: {search['name']}")
         jobs = scrape_jobs(
             search["career_page"], 
@@ -179,7 +166,7 @@ def main():
                 msg = f"New Job: {job['title']}\nCompany: {job['company']}\n{job['url']}"
                 send_telegram(msg)
                 print(f"  NEW: {job['title']} at {job['company']}")
-        print()
+
     
     save_json(SEEN_JOBS_FILE, list(seen_urls))
     print(f"Done. {total} jobs, {new} new.")
