@@ -33,7 +33,11 @@ def check_and_cleanup():
         save_json(CLEANUP_META_FILE, {"last_cleanup": now.isoformat()})
         return
     
-    if now - datetime.fromisoformat(last) >= timedelta(days=CLEANUP_DAYS):
+    last_dt = datetime.fromisoformat(last)
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=UTC)
+    
+    if now - last_dt >= timedelta(days=CLEANUP_DAYS):
         save_json(SEEN_JOBS_FILE, [])
         save_json(CLEANUP_META_FILE, {"last_cleanup": now.isoformat()})
         print("🧹 Cleanup done (10 days)\n")
