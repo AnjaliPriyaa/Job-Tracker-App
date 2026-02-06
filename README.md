@@ -1,3 +1,10 @@
+Read the full story on Medium:
+- **Part 1**: https://medium.com/@anjalipriya_/i-built-a-job-tracker-that-pings-me-when-my-dream-companies-post-new-roles-d71581406753
+- **Part 2**: https://medium.com/@anjalipriya_/why-my-job-tracker-needed-ai-and-how-it-changed-everything-c72d1d3cb21d
+- **Part 3**: Coming Soon
+
+---
+
 # Job Tracker
 
 Auto-scrape LinkedIn for DevOps jobs and get Telegram alerts.
@@ -52,3 +59,4 @@ Every 10 days: auto-cleanup all data
 - ai.py (35 lines) - AI matching
 - config.json - companies/keywords
 - .github/workflows/job-tracker.yml - runs every 20 min
+
