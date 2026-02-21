@@ -97,4 +97,4 @@ jobs:
 
 ---
 
-Made with ❤️ using LangChain and Google Gemini
+Made with using LangChain and Google Gemini
