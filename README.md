@@ -1,4 +1,4 @@
-# Job Tracker 🤖
+# Job Tracker 
 
 AI-powered job tracker that monitors LinkedIn and notifies you about relevant opportunities.
 
