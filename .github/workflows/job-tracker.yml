@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: pip install requests beautifulsoup4 python-dotenv google-genai
     - name: Run job tracker
-      run: python app.py
+      run: python agent_app_simple.py
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
