@@ -1,3 +1,10 @@
+"""
+DEPRECATED — use agent_app_simple.AgenticJobTracker instead.
+
+This module is retained for reference only.  The canonical pipeline lives
+in agent_app_simple.py (uses langchain_tools + langchain_ai modules).
+"""
+
 import os
 import json
 import re

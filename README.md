@@ -1,13 +1,14 @@
-# Job Tracker 
+# Job Tracker
 
-AI-powered job tracker that monitors LinkedIn and notifies you about relevant opportunities.
+AI-powered job tracker that monitors LinkedIn and notifies you about relevant opportunities via Telegram.
 
 ## Features
 
-- **AI-powered filtering** using Google Gemini
+- **AI-powered filtering** using Google Gemini (via LangChain)
 - **Telegram notifications** for job matches
-- **Smart filtering** by experience, roles, and keywords
-- **Auto cleanup** every 10 days
+- **Smart filtering** by experience, roles, keywords, and companies
+- **Auto cleanup** every 10 days (clears seen-jobs history)
+- **Deterministic pipeline** — reliable, predictable execution
 
 ## Quick Setup
 
@@ -24,10 +25,10 @@ AI-powered job tracker that monitors LinkedIn and notifies you about relevant op
    ```
 
 3. **Configure `config.json`:**
-   - Set your experience range (min/max years)
+   - Set your experience range (`experience_years` / `min_experience_years`)
    - Add target companies
    - List desired roles
-   - Add exclude keywords/roles
+   - Add exclude keywords, roles, and levels
 
 4. **Run:**
    ```bash
@@ -43,34 +44,37 @@ AI-powered job tracker that monitors LinkedIn and notifies you about relevant op
 
 Edit `config.json` to customize:
 
-- `experience_years`: Maximum years of experience (e.g., 6)
-- `min_experience_years`: Minimum years (e.g., 4)
-- `target_companies`: Companies to monitor
-- `roles`: Job titles you're looking for
-- `exclude_roles`: Roles to skip (manager, lead, principal, etc.)
-- `exclude_keywords`: Keywords to avoid (frontend, blockchain, etc.)
+| Field | Description |
+|---|---|
+| `experience_years` | Maximum years of experience (e.g., `6`) |
+| `min_experience_years` | Minimum years (e.g., `4`) |
+| `target_companies` | Companies to monitor |
+| `roles` | Job titles you're looking for |
+| `exclude_roles` | Roles to skip (`manager`, `lead`, `principal`, etc.) |
+| `exclude_levels` | Levels to skip (`junior`, `intern`, etc.) |
+| `exclude_keywords` | Keywords to avoid (`frontend`, `blockchain`, etc.) |
+| `job_portals` | LinkedIn search URLs with keywords |
 
 ## Files
 
-- `agent_app_simple.py` - Main application
-- `utils.py` - Shared utilities
-- `langchain_ai.py` - AI matching logic
-- `langchain_tools.py` - LangChain tools
-- `config.json` - Your configuration
-- `test.py` - End-to-end test
+| File | Purpose |
+|---|---|
+| `agent_app_simple.py` | Main application — `AgenticJobTracker` class + CLI entry point |
+| `langchain_ai.py` | AI job matching with Google Gemini (structured output) |
+| `langchain_tools.py` | LangChain-compatible tools (scraping, Telegram, filtering) |
+| `utils.py` | Shared utilities (JSON I/O, cleanup, seen-jobs tracking) |
+| `config.json` | Your configuration |
+| `test.py` | End-to-end test suite |
 
 ## How It Works
 
 ```
-Load Config → Scrape Jobs → Filter (exclude rules) 
-→ AI Match → Send Notification → Track Seen Jobs
+Load Config → Scrape Jobs → Pre-filter (exclude rules)
+→ AI Match (Gemini) → Send Notification → Track Seen Jobs
 ```
 
-## Troubleshooting
-
-- **No jobs found?** Check your LinkedIn URL and target companies
-- **Wrong matches?** Adjust experience range and exclude keywords
-- **Setup issues?** Run `python test.py` to verify everything works
+The pipeline is **deterministic** — the AI is used only for the matching step,
+not for orchestrating the workflow. This makes the system reliable and predictable.
 
 ## GitHub Actions (Optional)
 
@@ -97,4 +101,4 @@ jobs:
 
 ---
 
-Made with using LangChain and Google Gemini
+Made with LangChain, Google Gemini, and Python

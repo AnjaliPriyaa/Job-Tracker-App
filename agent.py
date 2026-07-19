@@ -1,96 +1,115 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_agent
-from tools import *
-import os
-from dotenv import load_dotenv
-from langchain_core.callbacks import BaseCallbackHandler
+"""
+LLM Agent-based job tracker (alternative to the deterministic pipeline).
 
-# Load environment variables from .env file
+Uses LangGraph's create_react_agent to let Gemini orchestrate tool calls.
+The deterministic pipeline in agent_app_simple.py is recommended for most
+use cases — this agent is provided for experimentation.
+
+Run directly:
+    python agent.py
+"""
+
+import json
+import os
+import sys
+
+from dotenv import load_dotenv
+
 load_dotenv()
 
-# --- Callbacks for observing tool usage ---
-class ToolCallback(BaseCallbackHandler):
-    """Custom callback handler to print tool usage."""
-    def on_tool_start(self, serialized, input_str, **kwargs):
-        tool_name = serialized.get("name", "unknown")
-        print(f"    🔧 Tool started → {tool_name}")
-        print(f"       Input preview: {input_str[:100]}...")
-    def on_tool_end(self, output, **kwargs):
-        print(f"    ✅ Tool finished → Output length: {len(str(output))} chars")
-        print(f"       Output preview: {str(output)[:100]}...")
-    def on_tool_error(self, error, **kwargs):
-        print(f"    ❌ Tool error → {error}")
 
-# --- Agent Configuration ---
+def _build_agent():
+    """Create the LangGraph ReAct agent (lazy init — only when run directly)."""
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langgraph.prebuilt import create_react_agent
+    from langchain_tools import ALL_TOOLS, load_config as _load_config_tool
 
-# Initialize the language model
-llm = ChatGoogleGenerativeAI(
+    llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
         temperature=0.2,
         google_api_key=os.getenv("GEMINI_API_KEY"),
     )
 
-# Define the list of tools available to the agent
-tools = [
-    load_config,
-    scrape_jobs,
-    get_job_description,
-    manage_seen_jobs,
-    send_telegram,
-]
+    # Build system prompt dynamically from config
+    try:
+        raw = _load_config_tool.invoke({})
+        cfg = json.loads(raw)
+    except Exception:
+        cfg = {}
 
-# Define the system prompt that instructs the agent
-system_prompt = """
-You are an autonomous job search agent.
+    exp_max = cfg.get("experience_years", 6)
+    exp_min = cfg.get("min_experience_years", 4)
+    exclude_roles = ", ".join(cfg.get("exclude_roles", [])[:8])
+    target_count = len(cfg.get("target_companies", []))
+    role_count = len(cfg.get("roles", []))
 
-Your goal:
-Find HIGH QUALITY job matches and notify the user.
+    system_prompt = f"""You are an autonomous job search agent.
+
+Your goal: find HIGH QUALITY job matches and notify the user.
 
 STRICT MATCHING RULES:
-- Only target companies
-- Must match keywords
-- Reject senior roles (Lead, Staff, Manager, Architect)
-- Reject >5 years experience
+- Only target companies ({target_count} configured)
+- Must match at least one role keyword ({role_count} roles configured)
+- Experience: {exp_min}–{exp_max} years
+- Reject these roles: {exclude_roles}
+- Reject >{exp_max} years experience requirements
 - Prefer individual contributor roles
 
 WORKFLOW:
-1. Load config
-2. Scrape jobs
-3. For each job:
-- Check if seen
-- Get description
-- Evaluate relevance YOURSELF
-- If strong match → notify
-- Mark as seen
+1. Call load_config to get the user's preferences
+2. Call scrape_jobs with the LinkedIn URL and target companies
+3. For each job returned:
+   a. Call manage_seen_jobs to check if already processed
+   b. Call get_job_description to fetch full details
+   c. Evaluate relevance YOURSELF using the rules above
+   d. If it's a strong match → call send_telegram to notify
+   e. Call manage_seen_jobs to mark as processed
+4. Call filter_jobs_by_experience if you need to narrow by years
 
 IMPORTANT:
-- DO NOT call any matching tool
-- YOU must decide match quality
-- Be selective (quality > quantity)
+- YOU decide match quality — there is no separate matching tool
+- Be selective: quality > quantity
+- Only notify for genuinely strong matches
 """
 
-# --- Main Execution ---
+    return create_react_agent(model=llm, tools=ALL_TOOLS, prompt=system_prompt)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    print("🤖 Starting Autonomous Job Agent...")
+    if not os.getenv("GEMINI_API_KEY"):
+        print("❌ GEMINI_API_KEY not set. Create a .env file or export the variable.")
+        sys.exit(1)
 
-    # Create the agent
-    agent_executor = create_agent(
-        model=llm,
-        tools=tools,
-        system_prompt=system_prompt,
-    )
+    print("🤖 Starting LLM Agent Job Tracker...")
 
-    # Instantiate the custom callback
-    tool_callback = ToolCallback()
+    agent_executor = _build_agent()
 
-    # Invoke the agent to start the job search
-    result = agent_executor.invoke(
-        {"messages":[{"role": "user", "content": "Find jobs based on the user's configuration."}]},
-        config={"callbacks": [tool_callback]}
-    )
+    try:
+        result = agent_executor.invoke({
+            "messages": [{
+                "role": "user",
+                "content": "Find jobs based on the user's configuration. Start by loading the config."
+            }]
+        })
 
-    # Print the final output from the agent
-    print("\n✅ Agent finished. Final Output:")
-    message = result["messages"][-1].content
-    message = message[-1]['text'] if isinstance(message, list) else message
-    print(message)
+        # Extract final message
+        messages = result.get("messages", [])
+        if messages:
+            final = messages[-1]
+            content = final.content if hasattr(final, "content") else str(final)
+            if isinstance(content, list):
+                content = " ".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            print(f"\n✅ Agent finished:\n{content}")
+        else:
+            print("\n✅ Agent finished (no messages returned).")
+
+    except Exception as e:
+        print(f"\n❌ Agent error: {e}")
+        sys.exit(1)

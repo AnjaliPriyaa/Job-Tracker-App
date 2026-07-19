@@ -1,3 +1,11 @@
+"""
+DEPRECATED — use langchain_ai.JobMatcher instead.
+
+This module is retained for reference only.  The canonical AI matching
+lives in langchain_ai.py (uses langchain_google_genai with structured
+output via Pydantic).
+"""
+
 from google import genai
 import json
 import os
