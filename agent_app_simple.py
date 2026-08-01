@@ -11,6 +11,7 @@ Run directly:
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -206,6 +207,33 @@ class AgenticJobTracker:
             # Don't mark as seen — transient errors shouldn't permanently suppress
             return
 
+        # --- Company pre-check: reject if no target company in description ---
+        desc_lower = description.lower()
+        matched_companies = [tc for tc in target_companies if tc.lower() in desc_lower]
+        if not matched_companies:
+            logger.debug("  ✗ No target company found in description for %s", job_id)
+            self.seen_jobs.add(job_id)
+            return
+
+        # --- Try to extract company name from the description ---
+        if not company:
+            for tc in target_companies:
+                if tc.lower() in desc_lower:
+                    company = tc
+                    break
+
+        # --- Try to extract title from description if missing ---
+        if not title:
+            # Common patterns: "Job Title:" or first heading-like text
+            title_match = re.search(r'(?:Job Title|Position|Role)\s*[:–-]\s*([^\n]{5,80})', description, re.I)
+            if title_match:
+                title = title_match.group(1).strip()
+            else:
+                # Use first line of description as fallback
+                first_line = description.strip().split('\n')[0]
+                if 5 <= len(first_line) <= 80:
+                    title = first_line
+
         # --- AI Match ---
         match_result = self.matcher.match(
             title=title,
@@ -222,18 +250,22 @@ class AgenticJobTracker:
 
         logger.info("  %s at %s → match=%s (%.0f%%)  %s",
                      title, company, match_result.match,
-                     match_result.confidence * 100, match_result.reason)
+                     match_result.confidence * 100, match_result.reason[:80])
 
         # --- Notify if match ---
         if match_result.match and match_result.confidence >= self.confidence_threshold:
             self.stats["jobs_matched"] += 1
 
+            # Truncate reason to keep Telegram messages clean
+            reason_short = match_result.reason[:150]
+            if len(match_result.reason) > 150:
+                reason_short += "..."
+
             message = (
-                f"🔔 New Job Match!\n\n"
-                f"*{title}*\n"
-                f"🏢 {company}\n"
-                f"🔗 {url}\n\n"
-                f"_{match_result.reason}_"
+                f"🔔 *{title or 'New Job'}*\n"
+                f"🏢 {company or 'Unknown'}\n"
+                f"🔗 {url}\n"
+                f"_{reason_short}_"
             )
             try:
                 send_telegram.invoke({"message": message})
