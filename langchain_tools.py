@@ -124,10 +124,11 @@ def scrape_jobs(input_data: str) -> str:
         return json.dumps({"error": str(e), "jobs": []})
 
     soup = BeautifulSoup(resp.text, "html.parser")
+    raw_html = resp.text
 
     # --- Diagnostic: log what LinkedIn returned ---
     page_title = soup.title.get_text(strip=True) if soup.title else "no title"
-    html_len = len(resp.text)
+    html_len = len(raw_html)
     logger.info("LinkedIn response: status=%d, title=%r, html_len=%d", resp.status_code, page_title, html_len)
 
     # Check for common block signals
@@ -137,112 +138,134 @@ def scrape_jobs(input_data: str) -> str:
         logger.warning("Short response (%d bytes) — likely blocked or empty page", html_len)
 
     jobs: list[dict] = []
-
-    # --- Strategy 1: Extract from all /jobs/view/ links on the page ---
-    # LinkedIn job links always follow the pattern /jobs/view/{jobId}/
     seen_ids: set[str] = set()
-    for link in soup.find_all("a", href=re.compile(r"/jobs/view/\d+")):
-        href = link.get("href", "")
-        job_id_match = re.search(r"/jobs/view/(\d+)", href)
-        if not job_id_match:
-            continue
-        job_id = job_id_match.group(1)
-        if len(job_id) < MIN_JOB_ID_LENGTH or job_id in seen_ids:
-            continue
 
-        # Try to find the title — it's typically near the link
-        title = link.get_text(strip=True)
-        if not title or len(title) < 3:
-            # Look for title in parent/sibling elements
-            parent = link.find_parent(["div", "li", "article"])
-            if parent:
-                title_el = parent.find(["h3", "h2", "span"], class_=lambda c: c and "title" in c.lower() if c else False)
-                if not title_el:
-                    title_el = parent.find(["h3", "h2"])
-                if title_el:
-                    title = title_el.get_text(strip=True)
-
-        if not title or len(title) < 3:
-            continue
-
-        # Try to find the company name
-        company = ""
-        parent = link.find_parent(["div", "li", "article"])
-        if parent:
-            company_el = parent.find(["h4", "span"], class_=lambda c: c and ("company" in c.lower() or "subtitle" in c.lower()) if c else False)
-            if not company_el:
-                # Look for text that looks like a company name near the link
-                for text_el in parent.find_all(["span", "p", "h4"]):
-                    txt = text_el.get_text(strip=True)
-                    if txt and txt != title and len(txt) > 2 and not txt.startswith("http"):
-                        company = txt
-                        break
-
-        # Company filter
-        if target_companies and company and not any(
-            tc.lower() in company.lower() for tc in target_companies
-        ):
-            continue
-
-        seen_ids.add(job_id)
-        jobs.append({
-            "id": job_id,
-            "title": title,
-            "company": company,
-            "url": f"https://www.linkedin.com/jobs/view/{job_id}",
-        })
-
-    # --- Strategy 2: Fallback to known CSS selectors ---
-    if not jobs:
-        logger.info("Strategy 1 found 0 jobs, trying CSS selectors...")
-        job_cards = soup.find_all("div", class_=re.compile(r"job.*card|base.*card|job.*result", re.I))
-        if not job_cards:
-            job_cards = soup.find_all("li", class_=re.compile(r"job|result", re.I))
-
-        for card in job_cards:
-            link_el = card.find("a", href=re.compile(r"/jobs/view/\d+"))
-            if not link_el:
-                continue
-            href = link_el.get("href", "")
-            job_id_match = re.search(r"/jobs/view/(\d+)", href)
-            if not job_id_match:
-                continue
-            job_id = job_id_match.group(1)
-            if len(job_id) < MIN_JOB_ID_LENGTH or job_id in seen_ids:
-                continue
-
-            title_el = card.find(["h3", "h2", "strong"])
-            title = title_el.get_text(strip=True) if title_el else link_el.get_text(strip=True)
-            if not title or len(title) < 3:
-                continue
-
-            company = ""
-            company_el = card.find(["h4", "span"], class_=re.compile(r"company|subtitle", re.I))
-            if company_el:
-                company = company_el.get_text(strip=True)
-
-            if target_companies and company and not any(
-                tc.lower() in company.lower() for tc in target_companies
-            ):
-                continue
-
+    # --- Strategy 1: Extract job URNs from embedded JSON/JS ---
+    # LinkedIn embeds job data as urn:li:jobPosting:ID in scripts and attributes
+    for match in re.finditer(r'urn:li:jobPosting:(\d{7,15})', raw_html):
+        job_id = match.group(1)
+        if job_id not in seen_ids:
             seen_ids.add(job_id)
             jobs.append({
                 "id": job_id,
-                "title": title,
-                "company": company,
+                "title": "",
+                "company": "",
                 "url": f"https://www.linkedin.com/jobs/view/{job_id}",
             })
 
-    if not jobs:
-        logger.warning("No job cards found with any strategy.")
-        return json.dumps({
-            "error": f"No job cards found — page title: '{page_title}', {html_len} bytes.",
-            "jobs": [],
-        })
+    if jobs:
+        logger.info("Strategy 1 (URNs): found %d jobs", len(jobs))
+    else:
+        # --- Strategy 2: Find /jobs/view/ links in script/data tags ---
+        # Sometimes the links are in JSON strings inside scripts
+        for match in re.finditer(r'/jobs/view/(\d{7,15})', raw_html):
+            job_id = match.group(1)
+            if job_id not in seen_ids:
+                seen_ids.add(job_id)
+                jobs.append({
+                    "id": job_id,
+                    "title": "",
+                    "company": "",
+                    "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+                })
 
-    logger.info("Extracted %d jobs from page", len(jobs))
-    return json.dumps({"jobs": jobs})
+        if jobs:
+            logger.info("Strategy 2 (view links in HTML): found %d jobs", len(jobs))
+        else:
+            # --- Strategy 3: Try data attributes ---
+            for match in re.finditer(r'data-job-id=["\']?(\d{7,15})', raw_html):
+                job_id = match.group(1)
+                if job_id not in seen_ids:
+                    seen_ids.add(job_id)
+                    jobs.append({
+                        "id": job_id,
+                        "title": "",
+                        "company": "",
+                        "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+                    })
+
+            if jobs:
+                logger.info("Strategy 3 (data-job-id): found %d jobs", len(jobs))
+            else:
+                # --- Strategy 4: Try entityUrn patterns ---
+                for match in re.finditer(r'"entityUrn"\s*:\s*"urn:li:jobPosting:(\d{7,15})"', raw_html):
+                    job_id = match.group(1)
+                    if job_id not in seen_ids:
+                        seen_ids.add(job_id)
+                        jobs.append({
+                            "id": job_id,
+                            "title": "",
+                            "company": "",
+                            "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+                        })
+
+                if jobs:
+                    logger.info("Strategy 4 (entityUrn): found %d jobs", len(jobs))
+                else:
+                    # --- Strategy 5: Broad pattern — any 10-digit number near 'job' ---
+                    for match in re.finditer(r'job[/"\'][^}]*?(\d{10})', raw_html, re.I):
+                        job_id = match.group(1)
+                        if job_id not in seen_ids and len(job_id) >= 10:
+                            seen_ids.add(job_id)
+                            jobs.append({
+                                "id": job_id,
+                                "title": "",
+                                "company": "",
+                                "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+                            })
+
+    # --- Try to enrich jobs with title/company from the page ---
+    if jobs:
+        # Look for job titles and companies near each job ID in the raw HTML
+        for job in jobs:
+            jid = job["id"]
+            # Try to find title near the job ID
+            title_match = re.search(
+                rf'{jid}.*?"title"\s*:\s*"([^"]+)"',
+                raw_html
+            )
+            if not title_match:
+                # Try JSON-LD or other structured formats
+                title_match = re.search(
+                    rf'jobPosting.*?{jid}.*?"title"\s*:\s*"([^"]+)"',
+                    raw_html, re.DOTALL
+                )
+            if title_match:
+                job["title"] = title_match.group(1)
+
+            # Try to find company
+            company_match = re.search(
+                rf'{jid}.*?"companyName"\s*:\s*"([^"]+)"',
+                raw_html
+            )
+            if not company_match:
+                company_match = re.search(
+                    rf'{jid}.*?"name"\s*:\s*"([^"]+)"',
+                    raw_html
+                )
+            if company_match:
+                job["company"] = company_match.group(1)
+
+        # Company filter
+        if target_companies:
+            filtered = []
+            for job in jobs:
+                company = job.get("company", "")
+                if company and not any(tc.lower() in company.lower() for tc in target_companies):
+                    continue
+                filtered.append(job)
+            jobs = filtered
+
+        logger.info("Extracted %d jobs from page (IDs from embedded data)", len(jobs))
+        return json.dumps({"jobs": jobs})
+
+    # --- Last resort: save page snippet and report failure ---
+    snippet = raw_html[:800]
+    logger.warning("All strategies failed. Page snippet: %s", snippet)
+    return json.dumps({
+        "error": f"No job data found — page title: '{page_title}', {html_len} bytes.",
+        "jobs": [],
+    })
 
 
 # ---------------------------------------------------------------------------
