@@ -135,67 +135,56 @@ def scrape_jobs(input_data: str) -> str:
         logger.warning("LinkedIn returned a login page — request was blocked/redirected")
     if html_len < 5000:
         logger.warning("Short response (%d bytes) — likely blocked or empty page", html_len)
-    if "captcha" in resp.text.lower() or "challenge" in resp.text.lower():
-        logger.warning("CAPTCHA or challenge detected in response")
-
-    # --- Find job cards ---
-    job_cards = soup.find_all("div", class_=["job-search-card", "base-card"])
-    if not job_cards:
-        # Try additional selectors as last-resort fallback
-        job_cards = soup.find_all("li", class_="jobs-search-results__list-item")
-    if not job_cards:
-        job_cards = soup.find_all("div", class_=lambda c: c and "job" in c.lower() and "card" in c.lower() if c else False)
-
-    if not job_cards:
-        # Save first 500 chars to help debug
-        snippet = resp.text[:500]
-        logger.warning("No job cards found. Page snippet: %s", snippet)
-        return json.dumps({
-            "error": f"No job cards found — page title: '{page_title}', {html_len} bytes. LinkedIn may have blocked the request or changed its layout.",
-            "jobs": [],
-        })
 
     jobs: list[dict] = []
 
-    for card in job_cards:
-        # Primary selectors
-        title_el = card.find("h3", class_="base-search-card__title")
-        company_el = card.find("h4", class_="base-search-card__subtitle")
-        link_el = card.find("a", class_="base-card__full-link")
-
-        # Fallbacks
-        if not link_el:
-            link_el = card.find("a")
-        if not title_el:
-            title_el = card.find("h3")
-        if not company_el:
-            company_el = card.find("h4")
-
-        if not (title_el and company_el and link_el):
+    # --- Strategy 1: Extract from all /jobs/view/ links on the page ---
+    # LinkedIn job links always follow the pattern /jobs/view/{jobId}/
+    seen_ids: set[str] = set()
+    for link in soup.find_all("a", href=re.compile(r"/jobs/view/\d+")):
+        href = link.get("href", "")
+        job_id_match = re.search(r"/jobs/view/(\d+)", href)
+        if not job_id_match:
+            continue
+        job_id = job_id_match.group(1)
+        if len(job_id) < MIN_JOB_ID_LENGTH or job_id in seen_ids:
             continue
 
-        title = title_el.get_text(strip=True)
-        company = company_el.get_text(strip=True)
-        link_href = link_el.get("href", "")
+        # Try to find the title — it's typically near the link
+        title = link.get_text(strip=True)
+        if not title or len(title) < 3:
+            # Look for title in parent/sibling elements
+            parent = link.find_parent(["div", "li", "article"])
+            if parent:
+                title_el = parent.find(["h3", "h2", "span"], class_=lambda c: c and "title" in c.lower() if c else False)
+                if not title_el:
+                    title_el = parent.find(["h3", "h2"])
+                if title_el:
+                    title = title_el.get_text(strip=True)
 
-        # Company filter (only when target list is non-empty)
-        if target_companies and not any(
+        if not title or len(title) < 3:
+            continue
+
+        # Try to find the company name
+        company = ""
+        parent = link.find_parent(["div", "li", "article"])
+        if parent:
+            company_el = parent.find(["h4", "span"], class_=lambda c: c and ("company" in c.lower() or "subtitle" in c.lower()) if c else False)
+            if not company_el:
+                # Look for text that looks like a company name near the link
+                for text_el in parent.find_all(["span", "p", "h4"]):
+                    txt = text_el.get_text(strip=True)
+                    if txt and txt != title and len(txt) > 2 and not txt.startswith("http"):
+                        company = txt
+                        break
+
+        # Company filter
+        if target_companies and company and not any(
             tc.lower() in company.lower() for tc in target_companies
         ):
             continue
 
-        # Extract job ID — prefer currentJobId, fallback to last digits in path
-        job_id_match = re.search(r"currentJobId=(\d+)", link_href)
-        if not job_id_match:
-            # Safer fallback: match the last digit-run before query/end
-            job_id_match = re.search(r"/jobs/view/(\d+)", link_href)
-        if not job_id_match:
-            continue
-
-        job_id = job_id_match.group(1)
-        if len(job_id) < MIN_JOB_ID_LENGTH:
-            continue  # skip bogus IDs
-
+        seen_ids.add(job_id)
         jobs.append({
             "id": job_id,
             "title": title,
@@ -203,6 +192,56 @@ def scrape_jobs(input_data: str) -> str:
             "url": f"https://www.linkedin.com/jobs/view/{job_id}",
         })
 
+    # --- Strategy 2: Fallback to known CSS selectors ---
+    if not jobs:
+        logger.info("Strategy 1 found 0 jobs, trying CSS selectors...")
+        job_cards = soup.find_all("div", class_=re.compile(r"job.*card|base.*card|job.*result", re.I))
+        if not job_cards:
+            job_cards = soup.find_all("li", class_=re.compile(r"job|result", re.I))
+
+        for card in job_cards:
+            link_el = card.find("a", href=re.compile(r"/jobs/view/\d+"))
+            if not link_el:
+                continue
+            href = link_el.get("href", "")
+            job_id_match = re.search(r"/jobs/view/(\d+)", href)
+            if not job_id_match:
+                continue
+            job_id = job_id_match.group(1)
+            if len(job_id) < MIN_JOB_ID_LENGTH or job_id in seen_ids:
+                continue
+
+            title_el = card.find(["h3", "h2", "strong"])
+            title = title_el.get_text(strip=True) if title_el else link_el.get_text(strip=True)
+            if not title or len(title) < 3:
+                continue
+
+            company = ""
+            company_el = card.find(["h4", "span"], class_=re.compile(r"company|subtitle", re.I))
+            if company_el:
+                company = company_el.get_text(strip=True)
+
+            if target_companies and company and not any(
+                tc.lower() in company.lower() for tc in target_companies
+            ):
+                continue
+
+            seen_ids.add(job_id)
+            jobs.append({
+                "id": job_id,
+                "title": title,
+                "company": company,
+                "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+            })
+
+    if not jobs:
+        logger.warning("No job cards found with any strategy.")
+        return json.dumps({
+            "error": f"No job cards found — page title: '{page_title}', {html_len} bytes.",
+            "jobs": [],
+        })
+
+    logger.info("Extracted %d jobs from page", len(jobs))
     return json.dumps({"jobs": jobs})
 
 
