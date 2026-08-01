@@ -201,9 +201,10 @@ class JobMatcher:
         *,
         keywords: list[str],
         target_companies: list[str],
-        exclude_keywords: list[str],
-        exclude_roles: list[str],
-        exclude_levels: list[str],
+        target_roles: Optional[list[str]] = None,
+        exclude_keywords: Optional[list[str]] = None,
+        exclude_roles: Optional[list[str]] = None,
+        exclude_levels: Optional[list[str]] = None,
         max_experience: int = 6,
         min_experience: int = 0,
     ) -> MatchResult:
@@ -212,6 +213,11 @@ class JobMatcher:
 
         Returns a MatchResult with match/confidence/reason fields.
         """
+        target_roles = target_roles or []
+        exclude_keywords = exclude_keywords or []
+        exclude_roles = exclude_roles or []
+        exclude_levels = exclude_levels or []
+
         # Quick pre-check: excluded role in title → skip AI call entirely
         title_lower = title.lower()
         for role in exclude_roles:
@@ -224,9 +230,19 @@ class JobMatcher:
         # Build the prompt
         exclude_roles_str = ", ".join(f'"{r}"' for r in exclude_roles)
         exclude_levels_str = ", ".join(f'"{l}"' for l in exclude_levels)
+        target_roles_str = ", ".join(target_roles)
+
+        role_rule = ""
+        if target_roles:
+            role_rule = (
+                f"0. The job role MUST align with one of these target roles: {target_roles_str}\n"
+                f"   REJECT if the role is fundamentally different (e.g., a C/C++ networking role "
+                f"is NOT a DevOps/Cloud/SRE role even if it mentions CI/CD in passing)\n"
+            )
+
         min_exp_rule = ""
         if min_experience > 0:
-            min_exp_rule = (f"7. REJECT if requires LESS than {min_experience} years experience "
+            min_exp_rule = (f"8. REJECT if requires LESS than {min_experience} years experience "
                             f"(e.g., jobs asking for 1-3 years when user has {min_experience}+)")
 
         prompt = (
@@ -235,12 +251,14 @@ class JobMatcher:
             f"Company: {company}\n"
             f"Description (first 3000 chars):\n{description[:3000]}\n\n"
             f"--- STRICT MATCHING RULES ---\n"
+            f"{role_rule}"
             f"1. Company MUST be in target list: {', '.join(target_companies)}\n"
             f"2. Title/description MUST contain at least one keyword: {', '.join(keywords)}\n"
             f"3. MUST NOT contain excluded keywords: {', '.join(exclude_keywords)}\n"
             f"4. REJECT if title contains: {exclude_roles_str}\n"
             f"5. REJECT if description mentions: {exclude_levels_str}\n"
             f"6. REJECT if requires MORE than {max_experience} years experience\n"
+            f"7. REJECT if the core job function doesn't match the target roles\n"
             f"{min_exp_rule}\n"
             f"Be STRICT — reject if ANY rule is violated. Return your verdict as JSON."
         )

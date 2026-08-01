@@ -95,6 +95,7 @@ class AgenticJobTracker:
             return self.stats
 
         target_companies = self.config.get("target_companies", [])
+        target_roles = self.config.get("roles", [])
         exclude_roles = self.config.get("exclude_roles", [])
         exclude_levels = self.config.get("exclude_levels", [])
         exclude_keywords = self.config.get("exclude_keywords", [])
@@ -136,6 +137,7 @@ class AgenticJobTracker:
                         job,
                         portal_keywords=portal_keywords,
                         target_companies=target_companies,
+                        target_roles=target_roles,
                         exclude_roles=exclude_roles,
                         exclude_levels=exclude_levels,
                         exclude_keywords=exclude_keywords,
@@ -163,6 +165,7 @@ class AgenticJobTracker:
         *,
         portal_keywords: list[str],
         target_companies: list[str],
+        target_roles: list[str],
         exclude_roles: list[str],
         exclude_levels: list[str],
         exclude_keywords: list[str],
@@ -207,20 +210,53 @@ class AgenticJobTracker:
             # Don't mark as seen — transient errors shouldn't permanently suppress
             return
 
-        # --- Company pre-check: reject if no target company in description ---
+        # --- Company pre-check & extraction ---
+        # We need the ACTUAL hiring company, not just any company mentioned
+        # in the description (e.g., "experience with Atlassian tools" ≠ Atlassian is hiring)
         desc_lower = description.lower()
-        matched_companies = [tc for tc in target_companies if tc.lower() in desc_lower]
-        if not matched_companies:
-            logger.debug("  ✗ No target company found in description for %s", job_id)
+
+        # Strategy 1: Find company in hiring-context patterns
+        # e.g., "at Google", "join Microsoft", "Apple is looking for", "here at Stripe"
+        actual_company = ""
+        for tc in target_companies:
+            tc_lower = tc.lower()
+            # Use word boundary for short names to avoid "Snap" → "snapshot"
+            boundary_tc = rf'\b{re.escape(tc_lower)}\b'
+            patterns = [
+                rf'(?:at|join|work at|here at|we are|we\'re)\s+{boundary_tc}',
+                rf'{boundary_tc}\s+(?:is|are)\s+(?:looking|hiring|seeking)',
+            ]
+            for pat in patterns:
+                if re.search(pat, desc_lower):
+                    actual_company = tc
+                    break
+            if actual_company:
+                break
+
+        # Strategy 2: Fallback — check word-boundary match in first 500 chars
+        # (company name usually appears early in the description)
+        if not actual_company:
+            desc_head = desc_lower[:500]
+            for tc in target_companies:
+                tc_lower = tc.lower()
+                if re.search(rf'\b{re.escape(tc_lower)}\b', desc_head):
+                    actual_company = tc
+                    break
+
+        # Strategy 3: For longer unique names, try full text with word boundaries
+        if not actual_company:
+            for tc in target_companies:
+                tc_lower = tc.lower()
+                if len(tc) >= 8 and re.search(rf'\b{re.escape(tc_lower)}\b', desc_lower):
+                    actual_company = tc
+                    break
+
+        if not actual_company:
+            logger.debug("  ✗ No target company found as hiring employer for %s", job_id)
             self.seen_jobs.add(job_id)
             return
 
-        # --- Try to extract company name from the description ---
-        if not company:
-            for tc in target_companies:
-                if tc.lower() in desc_lower:
-                    company = tc
-                    break
+        company = company or actual_company
 
         # --- Try to extract title from description if missing ---
         if not title:
@@ -241,6 +277,7 @@ class AgenticJobTracker:
             description=description,
             keywords=portal_keywords,
             target_companies=target_companies,
+            target_roles=target_roles,
             exclude_keywords=exclude_keywords,
             exclude_roles=exclude_roles,
             exclude_levels=exclude_levels,
