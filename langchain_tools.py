@@ -125,11 +125,33 @@ def scrape_jobs(input_data: str) -> str:
 
     soup = BeautifulSoup(resp.text, "html.parser")
 
+    # --- Diagnostic: log what LinkedIn returned ---
+    page_title = soup.title.get_text(strip=True) if soup.title else "no title"
+    html_len = len(resp.text)
+    logger.info("LinkedIn response: status=%d, title=%r, html_len=%d", resp.status_code, page_title, html_len)
+
+    # Check for common block signals
+    if "login" in page_title.lower() or "sign in" in page_title.lower():
+        logger.warning("LinkedIn returned a login page — request was blocked/redirected")
+    if html_len < 5000:
+        logger.warning("Short response (%d bytes) — likely blocked or empty page", html_len)
+    if "captcha" in resp.text.lower() or "challenge" in resp.text.lower():
+        logger.warning("CAPTCHA or challenge detected in response")
+
     # --- Find job cards ---
     job_cards = soup.find_all("div", class_=["job-search-card", "base-card"])
     if not job_cards:
+        # Try additional selectors as last-resort fallback
+        job_cards = soup.find_all("li", class_="jobs-search-results__list-item")
+    if not job_cards:
+        job_cards = soup.find_all("div", class_=lambda c: c and "job" in c.lower() and "card" in c.lower() if c else False)
+
+    if not job_cards:
+        # Save first 500 chars to help debug
+        snippet = resp.text[:500]
+        logger.warning("No job cards found. Page snippet: %s", snippet)
         return json.dumps({
-            "error": "No job cards found — LinkedIn may have blocked the request or changed its layout.",
+            "error": f"No job cards found — page title: '{page_title}', {html_len} bytes. LinkedIn may have blocked the request or changed its layout.",
             "jobs": [],
         })
 
