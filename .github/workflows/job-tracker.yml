@@ -2,7 +2,7 @@ name: Job Tracker
 
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -13,27 +13,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
       with:
         python-version: '3.12'
+        cache: 'pip'
+
     - name: Install dependencies
       run: pip install -r requirements.txt
-    - name: Run job tracker
-      run: python agent.py
+
+    - name: Run job tracker (deterministic pipeline)
+      run: python agent_app_simple.py
       env:
+        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    - name: Commit changes
+
+    - name: Commit state changes
       run: |
         git config user.email "actions@github.com"
         git config user.name "GitHub Actions"
         git add seen_jobs.json cleanup_meta.json
         git diff --staged --quiet || git commit -m "update jobs"
-    - name: Push changes
-      uses: ad-m/github-push-action@master
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: ${{ github.ref }}
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

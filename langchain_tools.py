@@ -7,8 +7,10 @@ pipelines.
 """
 
 import json
+import logging
 import os
 import re
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,6 +18,37 @@ from langchain_core.tools import tool
 
 from utils import load_config as _load_config_util
 from utils import load_seen_jobs, save_seen_jobs, MIN_JOB_ID_LENGTH
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Retry helper
+# ---------------------------------------------------------------------------
+
+RETRY_MAX = 3
+RETRY_BACKOFF = 2.0  # seconds, exponential
+
+
+def _retry_get(url: str, timeout: int = 15) -> requests.Response:
+    """GET with exponential backoff retry (3 attempts)."""
+    last_exc = None
+    for attempt in range(1, RETRY_MAX + 1):
+        try:
+            resp = requests.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < RETRY_MAX:
+                wait = RETRY_BACKOFF ** attempt
+                logger.debug("Request failed (attempt %d/%d), retrying in %.1fs: %s", attempt, RETRY_MAX, wait, exc)
+                time.sleep(wait)
+    raise last_exc  # type: ignore[misc]
+
 
 # ---------------------------------------------------------------------------
 # 1.  Load configuration
@@ -83,15 +116,11 @@ def scrape_jobs(input_data: str) -> str:
     url = data.get("url", "")
     target_companies = data.get("target_companies", [])
 
-    # --- Fetch page ---
+    # --- Fetch page (with retry) ---
     try:
-        resp = requests.get(
-            url,
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=15,
-        )
-        resp.raise_for_status()
+        resp = _retry_get(url)
     except requests.RequestException as e:
+        logger.warning("Scrape failed after %d attempts: %s", RETRY_MAX, e)
         return json.dumps({"error": str(e), "jobs": []})
 
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -133,10 +162,11 @@ def scrape_jobs(input_data: str) -> str:
         ):
             continue
 
-        # Extract job ID
-        job_id_match = re.search(r"currentJobId=(\d+)", link_href) or re.search(
-            r"-(\d+)", link_href
-        )
+        # Extract job ID — prefer currentJobId, fallback to last digits in path
+        job_id_match = re.search(r"currentJobId=(\d+)", link_href)
+        if not job_id_match:
+            # Safer fallback: match the last digit-run before query/end
+            job_id_match = re.search(r"/jobs/view/(\d+)", link_href)
         if not job_id_match:
             continue
 
@@ -162,28 +192,29 @@ def scrape_jobs(input_data: str) -> str:
 def get_job_description(job_url: str) -> str:
     """Fetch the full job description from a LinkedIn job posting URL."""
     try:
-        resp = requests.get(
-            job_url,
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=15,
-        )
-        resp.raise_for_status()
+        resp = _retry_get(job_url)
         soup = BeautifulSoup(resp.text, "html.parser")
 
         # Primary container
-        desc_container = soup.find("div", class_="jobs-description")
+        desc_container = soup.find("div", class_="show-more-less-html__markup")
         if desc_container:
             text = desc_container.get_text(separator="\n", strip=True)
             return text[:4000]
 
-        # Fallback
-        desc_el = soup.find("div", class_="show-more-less-html__markup")
+        # Fallback — try the jobs-description container
+        desc_el = soup.find("div", class_="jobs-description__content")
         if desc_el:
             return desc_el.get_text(separator="\n", strip=True)[:4000]
+
+        # Second fallback — article container
+        article_el = soup.find("article", class_="jobs-description__container")
+        if article_el:
+            return article_el.get_text(separator="\n", strip=True)[:4000]
 
         return "ERROR: Could not find job description — page layout may have changed."
 
     except requests.RequestException as e:
+        logger.warning("Description fetch failed after %d attempts: %s", RETRY_MAX, e)
         return f"ERROR: {e}"
 
 
@@ -262,6 +293,10 @@ def filter_jobs_by_experience(input_data: str) -> str:
 
         # Reject if the role requires more than the user's max
         if required_min > max_experience + 1.5:
+            continue
+
+        # Reject if the role's max is well below user's experience level
+        if required_max < my_experience - 2:
             continue
 
         # User's experience fits within the required range (with 1.5 yr flexibility)

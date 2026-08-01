@@ -1,7 +1,9 @@
 """
 LLM Agent-based job tracker (alternative to the deterministic pipeline).
 
-Uses LangGraph's create_react_agent to let Gemini orchestrate tool calls.
+Uses LangGraph's create_react_agent to let the LLM orchestrate tool calls.
+Supports DeepSeek and Google Gemini — auto-detects from API keys.
+
 The deterministic pipeline in agent_app_simple.py is recommended for most
 use cases — this agent is provided for experimentation.
 
@@ -18,17 +20,69 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _resolve_agent_llm():
+    """
+    Resolve which LLM to use for the agent, checking DeepSeek first
+    (free tier), then Gemini.
+    """
+    force = os.getenv("AI_PROVIDER", "").lower()
+    has_deepseek = bool(os.getenv("DEEPSEEK_API_KEY"))
+    has_gemini = bool(os.getenv("GEMINI_API_KEY"))
+
+    if force == "deepseek" and has_deepseek:
+        from langchain_openai import ChatOpenAI
+        model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        return ChatOpenAI(
+            model=model,
+            temperature=0.2,
+            openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
+            openai_api_base="https://api.deepseek.com",
+        ), "deepseek", model
+
+    if force == "gemini" and has_gemini:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        return ChatGoogleGenerativeAI(
+            model=model,
+            temperature=0.2,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
+        ), "gemini", model
+
+    # Auto-detect
+    if has_deepseek:
+        from langchain_openai import ChatOpenAI
+        model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        return ChatOpenAI(
+            model=model,
+            temperature=0.2,
+            openai_api_key=os.getenv("DEEPSEEK_API_KEY"),
+            openai_api_base="https://api.deepseek.com",
+        ), "deepseek", model
+
+    if has_gemini:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        return ChatGoogleGenerativeAI(
+            model=model,
+            temperature=0.2,
+            google_api_key=os.getenv("GEMINI_API_KEY"),
+        ), "gemini", model
+
+    return None, "", ""
+
+
 def _build_agent():
     """Create the LangGraph ReAct agent (lazy init — only when run directly)."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
     from langgraph.prebuilt import create_react_agent
     from langchain_tools import ALL_TOOLS, load_config as _load_config_tool
 
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0.2,
-        google_api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    llm, provider, model = _resolve_agent_llm()
+
+    if llm is None:
+        print("❌ No API key found. Set DEEPSEEK_API_KEY or GEMINI_API_KEY.")
+        sys.exit(1)
+
+    print(f"🤖 Using {provider} ({model})")
 
     # Build system prompt dynamically from config
     try:
@@ -53,6 +107,7 @@ STRICT MATCHING RULES:
 - Experience: {exp_min}–{exp_max} years
 - Reject these roles: {exclude_roles}
 - Reject >{exp_max} years experience requirements
+- Reject <{exp_min} years experience requirements
 - Prefer individual contributor roles
 
 WORKFLOW:
@@ -80,10 +135,6 @@ IMPORTANT:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    if not os.getenv("GEMINI_API_KEY"):
-        print("❌ GEMINI_API_KEY not set. Create a .env file or export the variable.")
-        sys.exit(1)
-
     print("🤖 Starting LLM Agent Job Tracker...")
 
     agent_executor = _build_agent()

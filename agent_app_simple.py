@@ -25,7 +25,6 @@ from utils import (
     check_and_cleanup,
     load_config,
     load_seen_jobs,
-    mark_job_seen,
     save_seen_jobs,
 )
 
@@ -54,6 +53,9 @@ class AgenticJobTracker:
     def __init__(self):
         # --- Config ---
         self.config = load_config()
+
+        # --- Confidence threshold (configurable) ---
+        self.confidence_threshold = self.config.get("confidence_threshold", 0.6)
 
         # --- AI Matcher ---
         self.matcher = JobMatcher()
@@ -195,12 +197,13 @@ class AgenticJobTracker:
             description = raw_desc if isinstance(raw_desc, str) else str(raw_desc)
         except Exception:
             logger.debug("  ⚠ Could not fetch description for %s", job_id)
-            self.seen_jobs.add(job_id)
+            # Don't mark as seen — transient fetch failures shouldn't permanently
+            # suppress; the job will be re-evaluated next run
             return
 
         if description.startswith("ERROR"):
             logger.debug("  ⚠ Description error for %s: %s", job_id, description[:100])
-            self.seen_jobs.add(job_id)
+            # Don't mark as seen — transient errors shouldn't permanently suppress
             return
 
         # --- AI Match ---
@@ -214,6 +217,7 @@ class AgenticJobTracker:
             exclude_roles=exclude_roles,
             exclude_levels=exclude_levels,
             max_experience=max_experience,
+            min_experience=min_experience,
         )
 
         logger.info("  %s at %s → match=%s (%.0f%%)  %s",
@@ -221,7 +225,7 @@ class AgenticJobTracker:
                      match_result.confidence * 100, match_result.reason)
 
         # --- Notify if match ---
-        if match_result.match and match_result.confidence >= 0.6:
+        if match_result.match and match_result.confidence >= self.confidence_threshold:
             self.stats["jobs_matched"] += 1
 
             message = (
@@ -237,6 +241,9 @@ class AgenticJobTracker:
                 logger.info("  ✅ Notified: %s at %s", title, company)
             except Exception as e:
                 logger.error("  ❌ Telegram send failed: %s", e)
+                # Don't mark as seen — transient Telegram failures shouldn't
+                # lose the notification; retry next run
+                return
 
         # --- Mark seen ---
         self.seen_jobs.add(job_id)

@@ -6,6 +6,7 @@ and Telegram notifications.
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,6 +16,8 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paths (relative to this file so the app works from any CWD)
@@ -28,7 +31,7 @@ CONFIG_FILE = _HERE / "config.json"
 # Constants
 # ---------------------------------------------------------------------------
 CLEANUP_DAYS = 10
-MIN_JOB_ID_LENGTH = 5  # real LinkedIn job IDs are 10 digits
+MIN_JOB_ID_LENGTH = 5  # real LinkedIn job IDs are 10 digits; 5 is a safety floor
 
 
 # ===================================================================
@@ -45,7 +48,7 @@ def load_json(path: Path, default: Any = None) -> Any:
 
 
 def save_json(path: Path, data: Any) -> None:
-    """Atomically-ish write *data* as JSON."""
+    """Atomically write *data* as JSON (tmp + rename)."""
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w") as fh:
         json.dump(data, fh)
@@ -136,6 +139,7 @@ def send_telegram(message: str) -> bool:
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id:
+        logger.warning("Telegram not configured — skipping notification")
         return False
 
     try:
@@ -144,6 +148,14 @@ def send_telegram(message: str) -> bool:
             json={"chat_id": chat_id, "text": message},
             timeout=10,
         )
-        return resp.status_code == 200
-    except requests.RequestException:
+        if resp.status_code == 200:
+            body = resp.json()
+            if body.get("ok"):
+                return True
+            logger.error("Telegram API error: %s (code %s)", body.get("description", "unknown"), body.get("error_code", "?"))
+        else:
+            logger.error("Telegram HTTP %d: %s", resp.status_code, resp.text[:200])
+        return False
+    except requests.RequestException as e:
+        logger.error("Telegram request failed: %s", e)
         return False
