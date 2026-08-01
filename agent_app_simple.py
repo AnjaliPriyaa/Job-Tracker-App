@@ -195,68 +195,50 @@ class AgenticJobTracker:
             self.seen_jobs.add(job_id)
             return
 
-        # --- Fetch description ---
+        # --- Fetch description (now returns JSON with company name from LinkedIn) ---
         try:
             raw_desc = get_job_description.invoke({"job_url": url})
-            description = raw_desc if isinstance(raw_desc, str) else str(raw_desc)
+            raw_desc_str = raw_desc if isinstance(raw_desc, str) else str(raw_desc)
         except Exception:
             logger.debug("  ⚠ Could not fetch description for %s", job_id)
-            # Don't mark as seen — transient fetch failures shouldn't permanently
-            # suppress; the job will be re-evaluated next run
             return
 
-        if description.startswith("ERROR"):
-            logger.debug("  ⚠ Description error for %s: %s", job_id, description[:100])
-            # Don't mark as seen — transient errors shouldn't permanently suppress
+        if raw_desc_str.startswith("ERROR"):
+            logger.debug("  ⚠ Description error for %s: %s", job_id, raw_desc_str[:100])
             return
 
-        # --- Company pre-check & extraction ---
-        # We need the ACTUAL hiring company, not just any company mentioned
-        # in the description (e.g., "experience with Atlassian tools" ≠ Atlassian is hiring)
-        desc_lower = description.lower()
+        # Parse the JSON response: {"description": "...", "company": "..."}
+        try:
+            desc_data = json.loads(raw_desc_str)
+            description = desc_data.get("description", "")
+            linkedin_company = desc_data.get("company", "")
+        except (json.JSONDecodeError, TypeError):
+            description = raw_desc_str
+            linkedin_company = ""
 
-        # Strategy 1: Find company in hiring-context patterns
-        # e.g., "at Google", "join Microsoft", "Apple is looking for", "here at Stripe"
-        actual_company = ""
-        for tc in target_companies:
-            tc_lower = tc.lower()
-            # Use word boundary for short names to avoid "Snap" → "snapshot"
-            boundary_tc = rf'\b{re.escape(tc_lower)}\b'
-            patterns = [
-                rf'(?:at|join|work at|here at|we are|we\'re)\s+{boundary_tc}',
-                rf'{boundary_tc}\s+(?:is|are)\s+(?:looking|hiring|seeking)',
-            ]
-            for pat in patterns:
-                if re.search(pat, desc_lower):
-                    actual_company = tc
-                    break
-            if actual_company:
-                break
+        if not description:
+            logger.debug("  ⚠ Empty description for %s", job_id)
+            return
 
-        # Strategy 2: Fallback — check word-boundary match in first 500 chars
-        # (company name usually appears early in the description)
-        if not actual_company:
-            desc_head = desc_lower[:500]
-            for tc in target_companies:
-                tc_lower = tc.lower()
-                if re.search(rf'\b{re.escape(tc_lower)}\b', desc_head):
-                    actual_company = tc
-                    break
-
-        # Strategy 3: For longer unique names, try full text with word boundaries
-        if not actual_company:
-            for tc in target_companies:
-                tc_lower = tc.lower()
-                if len(tc) >= 8 and re.search(rf'\b{re.escape(tc_lower)}\b', desc_lower):
-                    actual_company = tc
-                    break
+        # --- Company check: use LinkedIn-extracted company if available ---
+        actual_company = linkedin_company or company
 
         if not actual_company:
-            logger.debug("  ✗ No target company found as hiring employer for %s", job_id)
+            logger.debug("  ✗ Could not determine company for %s", job_id)
             self.seen_jobs.add(job_id)
             return
 
-        company = company or actual_company
+        # Verify company is in target list
+        company_in_target = any(
+            tc.lower() in actual_company.lower() or actual_company.lower() in tc.lower()
+            for tc in target_companies
+        )
+        if not company_in_target:
+            logger.debug("  ✗ Company '%s' not in target list for %s", actual_company, job_id)
+            self.seen_jobs.add(job_id)
+            return
+
+        company = actual_company
 
         # --- Try to extract title from description if missing ---
         if not title:

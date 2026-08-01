@@ -274,28 +274,68 @@ def scrape_jobs(input_data: str) -> str:
 
 @tool
 def get_job_description(job_url: str) -> str:
-    """Fetch the full job description from a LinkedIn job posting URL."""
+    """Fetch the full job description and company name from a LinkedIn job posting URL.
+
+    Returns JSON: {"description": "...", "company": "Company Name"} or error string.
+    """
     try:
         resp = _retry_get(job_url)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Primary container
+        # --- Extract company name from page title ---
+        # LinkedIn page title format: "Company hiring Job Title in Location | LinkedIn"
+        company = ""
+        if soup.title:
+            title_text = soup.title.get_text(strip=True)
+            # Try "X hiring Y" pattern
+            hiring_match = re.search(r'^(.+?)\s+hiring\s+', title_text)
+            if hiring_match:
+                company = hiring_match.group(1).strip()
+
+        # Fallback: try meta tags
+        if not company:
+            og_desc = soup.find("meta", property="og:description")
+            if og_desc and og_desc.get("content"):
+                content = og_desc["content"]
+                # "Company · Location" pattern
+                parts = content.split("·")
+                if parts:
+                    company = parts[0].strip()
+
+        # Fallback: try JSON-LD
+        if not company:
+            for script in soup.find_all("script", type="application/ld+json"):
+                try:
+                    data = json.loads(script.string or "")
+                    if isinstance(data, dict):
+                        org = data.get("hiringOrganization", {})
+                        if isinstance(org, dict):
+                            company = org.get("name", "")
+                        if company:
+                            break
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        # --- Get description ---
+        description = ""
         desc_container = soup.find("div", class_="show-more-less-html__markup")
         if desc_container:
-            text = desc_container.get_text(separator="\n", strip=True)
-            return text[:4000]
+            description = desc_container.get_text(separator="\n", strip=True)[:4000]
 
-        # Fallback — try the jobs-description container
-        desc_el = soup.find("div", class_="jobs-description__content")
-        if desc_el:
-            return desc_el.get_text(separator="\n", strip=True)[:4000]
+        if not description:
+            desc_el = soup.find("div", class_="jobs-description__content")
+            if desc_el:
+                description = desc_el.get_text(separator="\n", strip=True)[:4000]
 
-        # Second fallback — article container
-        article_el = soup.find("article", class_="jobs-description__container")
-        if article_el:
-            return article_el.get_text(separator="\n", strip=True)[:4000]
+        if not description:
+            article_el = soup.find("article", class_="jobs-description__container")
+            if article_el:
+                description = article_el.get_text(separator="\n", strip=True)[:4000]
 
-        return "ERROR: Could not find job description — page layout may have changed."
+        if not description:
+            return "ERROR: Could not find job description — page layout may have changed."
+
+        return json.dumps({"description": description, "company": company})
 
     except requests.RequestException as e:
         logger.warning("Description fetch failed after %d attempts: %s", RETRY_MAX, e)
