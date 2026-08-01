@@ -207,21 +207,24 @@ class AgenticJobTracker:
             logger.debug("  ⚠ Description error for %s: %s", job_id, raw_desc_str[:100])
             return
 
-        # Parse the JSON response: {"description": "...", "company": "..."}
+        # Parse the JSON response: {"description": "...", "company": "...", "title": "..."}
         try:
             desc_data = json.loads(raw_desc_str)
             description = desc_data.get("description", "")
             linkedin_company = desc_data.get("company", "")
+            linkedin_title = desc_data.get("title", "")
         except (json.JSONDecodeError, TypeError):
             description = raw_desc_str
             linkedin_company = ""
+            linkedin_title = ""
 
         if not description:
             logger.debug("  ⚠ Empty description for %s", job_id)
             return
 
-        # --- Company check: use LinkedIn-extracted company if available ---
+        # --- Use LinkedIn-extracted values (most reliable) ---
         actual_company = linkedin_company or company
+        title = linkedin_title or title
 
         if not actual_company:
             logger.debug("  ✗ Could not determine company for %s", job_id)
@@ -239,18 +242,6 @@ class AgenticJobTracker:
             return
 
         company = actual_company
-
-        # --- Try to extract title from description if missing ---
-        if not title:
-            # Common patterns: "Job Title:" or first heading-like text
-            title_match = re.search(r'(?:Job Title|Position|Role)\s*[:–-]\s*([^\n]{5,80})', description, re.I)
-            if title_match:
-                title = title_match.group(1).strip()
-            else:
-                # Use first line of description as fallback
-                first_line = description.strip().split('\n')[0]
-                if 5 <= len(first_line) <= 80:
-                    title = first_line
 
         # --- AI Match ---
         match_result = self.matcher.match(

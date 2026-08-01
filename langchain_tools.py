@@ -282,22 +282,26 @@ def get_job_description(job_url: str) -> str:
         resp = _retry_get(job_url)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # --- Extract company name from page title ---
+        # --- Extract company and title from page ---
         # LinkedIn page title format: "Company hiring Job Title in Location | LinkedIn"
         company = ""
+        job_title = ""
         if soup.title:
             title_text = soup.title.get_text(strip=True)
-            # Try "X hiring Y" pattern
-            hiring_match = re.search(r'^(.+?)\s+hiring\s+', title_text)
+            # "X hiring Y in Z | LinkedIn" or "X hiring Y | LinkedIn"
+            hiring_match = re.search(r'^(.+?)\s+hiring\s+(.+?)\s+(?:in\s+.+?\s+)?\|?\s*LinkedIn', title_text)
+            if not hiring_match:
+                # Simpler pattern: "X hiring Y"
+                hiring_match = re.search(r'^(.+?)\s+hiring\s+(.+)$', title_text)
             if hiring_match:
                 company = hiring_match.group(1).strip()
+                job_title = hiring_match.group(2).strip().rstrip("|").strip()
 
-        # Fallback: try meta tags
+        # Fallback: try meta tags for company
         if not company:
             og_desc = soup.find("meta", property="og:description")
             if og_desc and og_desc.get("content"):
                 content = og_desc["content"]
-                # "Company · Location" pattern
                 parts = content.split("·")
                 if parts:
                     company = parts[0].strip()
@@ -311,6 +315,8 @@ def get_job_description(job_url: str) -> str:
                         org = data.get("hiringOrganization", {})
                         if isinstance(org, dict):
                             company = org.get("name", "")
+                        if not job_title:
+                            job_title = data.get("title", "")
                         if company:
                             break
                 except (json.JSONDecodeError, TypeError):
@@ -335,7 +341,7 @@ def get_job_description(job_url: str) -> str:
         if not description:
             return "ERROR: Could not find job description — page layout may have changed."
 
-        return json.dumps({"description": description, "company": company})
+        return json.dumps({"description": description, "company": company, "title": job_title})
 
     except requests.RequestException as e:
         logger.warning("Description fetch failed after %d attempts: %s", RETRY_MAX, e)
