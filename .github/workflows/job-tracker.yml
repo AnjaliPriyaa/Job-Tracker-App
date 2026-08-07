@@ -9,14 +9,14 @@ permissions:
   contents: write
 
 jobs:
-  track-jobs:
+  linkedin:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
     - name: Setup Python
-      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
       with:
         python-version: '3.12'
         cache: 'pip'
@@ -24,15 +24,37 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Run agentic job tracker (DeepAgents)
-      run: python agentic_tracker.py
+    - name: Run LinkedIn tracker
+      run: python linkedin_tracker.py
       env:
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+  career-pages:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+    - name: Setup Python
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run Career Pages tracker
+      run: python career_pages_tracker.py
+      env:
+        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     - name: Commit state changes
+      if: always()
       run: |
         git config user.email "actions@github.com"
         git config user.name "GitHub Actions"
