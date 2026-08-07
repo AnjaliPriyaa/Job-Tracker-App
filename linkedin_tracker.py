@@ -63,8 +63,8 @@ WORKFLOW:
    e. If match=false → manage_seen_jobs action="add"
 4. Report total found, matched, notified
 
-Telegram format: "🔔 *Title*\n🏢 Company\n📌 [LinkedIn]\n🔗 URL\n📂 linkedin_search_url\n_reason(max 120 chars)_"
-Include 📌 [LinkedIn] tag and 📂 with the LinkedIn search URL in every message.
+Telegram format: "🔔 *Title*\n🏢 Company\n📌 LinkedIn\n🔗 URL\n_reason(max 120 chars)_"
+Do NOT include the LinkedIn search URL in messages.
 """
 
     agent = create_deep_agent(

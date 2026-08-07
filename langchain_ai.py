@@ -323,13 +323,30 @@ def match_job_tool(job_data: str) -> str:
     except json.JSONDecodeError:
         return json.dumps({"match": False, "confidence": 1.0, "reason": "Invalid JSON input"})
 
+    company = data.get("company", "")
+    target_companies = data.get("target_companies", [])
+
+    # --- HARD COMPANY CHECK (not AI — deterministic) ---
+    # This prevents the AI from accidentally matching non-target companies
+    if company and target_companies:
+        company_in_list = any(
+            tc.lower() in company.lower() or company.lower() in tc.lower()
+            for tc in target_companies
+        )
+        if not company_in_list:
+            return json.dumps({
+                "match": False,
+                "confidence": 1.0,
+                "reason": f"Company '{company}' is NOT in the target list. Rejected."
+            })
+
     matcher = _get_matcher()
     result = matcher.match(
         title=data.get("title", ""),
-        company=data.get("company", ""),
+        company=company,
         description=data.get("description", ""),
         keywords=data.get("keywords", []),
-        target_companies=data.get("target_companies", []),
+        target_companies=target_companies,
         target_roles=data.get("target_roles", []),
         exclude_keywords=data.get("exclude_keywords", []),
         exclude_roles=data.get("exclude_roles", []),

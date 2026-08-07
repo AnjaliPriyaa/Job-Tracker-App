@@ -107,7 +107,7 @@ def fetch_description(job_url):
         return None
 
 
-def send_telegram(title, company, url, reason, source_label="", source_url=""):
+def send_telegram(title, company, url, reason, source_label=""):
     """Send Telegram notification."""
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -119,8 +119,6 @@ def send_telegram(title, company, url, reason, source_label="", source_url=""):
     if source_label:
         msg += f"\n📌 {source_label}"
     msg += f"\n🔗 {url}\n_{reason_short}_"
-    if source_url:
-        msg += f"\n📂 {source_url}"
 
     try:
         resp = requests.post(
@@ -234,8 +232,7 @@ def main():
 
                     if send_telegram(
                         actual_title, actual_company, href, result.reason,
-                        source_label=f"[Career Page — {company}]",
-                        source_url=url,
+                        source_label=f"Career Page — {company}",
                     ):
                         total_notified += 1
                         logger.info("  ✅ Notified: %s at %s", actual_title, actual_company)
