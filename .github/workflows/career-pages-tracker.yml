@@ -1,15 +1,15 @@
-name: Job Tracker
+name: Career Pages Tracker
 
 on:
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '30 4 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  fetch-jobs-from-linkedin:
+  career-pages:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -19,29 +19,6 @@ jobs:
       uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
       with:
         python-version: '3.12'
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-
-    - name: Run LinkedIn tracker
-      run: python linkedin_tracker.py
-      env:
-        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-  fetch-jobs-from-career-pages:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-    - name: Setup Python
-      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
-      with:
-        python-version: '3.12'
-        cache: 'pip'
 
     - name: Install dependencies
       run: pip install -r requirements.txt

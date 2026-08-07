@@ -8,6 +8,7 @@ and Telegram notifications.
 import json
 import logging
 import os
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -48,11 +49,18 @@ def load_json(path: Path, default: Any = None) -> Any:
 
 
 def save_json(path: Path, data: Any) -> None:
-    """Atomically write *data* as JSON (tmp + rename)."""
+    """Write *data* as JSON."""
     tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w") as fh:
-        json.dump(data, fh)
-    tmp.replace(path)
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(data, fh)
+        shutil.move(str(tmp), str(path))
+    except Exception:
+        # Fallback: direct write
+        with open(path, "w") as fh:
+            json.dump(data, fh)
+        if tmp.exists():
+            tmp.unlink()
 
 
 # ===================================================================

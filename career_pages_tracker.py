@@ -163,7 +163,7 @@ def main():
             company_jobs = 0
             company_matched = 0
 
-            # Skip words that are never job titles
+            # Skip words/phrases that are never job titles
             skip_words = [
                 "department", "location", "team", "view all", "privacy",
                 "terms", "sitemap", "english", "français", "deutsch",
@@ -171,6 +171,17 @@ def main():
                 "life at", "careers at", "anthem", "copyright",
                 "accessibility", "cookie", "legal", "press", "blog",
                 "sign in", "log in", "contact", "about", "news",
+                "view docs", "view open roles", "learn more", "open roles",
+                "techno-optimists", "engineering blog", "find cont",
+                "read more", "get started", "subscribe", "follow us",
+                "see all jobs", "all openings", "current openings",
+            ]
+            # Words that suggest a real job title (must have at least one)
+            job_title_keywords = [
+                "engineer", "devops", "sre", "cloud", "infrastructure",
+                "platform", "site reliability", "developer", "architect",
+                "security", "sysadmin", "administrator", "network",
+                "kubernetes", "terraform", "aws", "azure", "gcp",
             ]
 
             for link in soup.find_all("a", href=True):
@@ -179,12 +190,16 @@ def main():
 
                 if not title or len(title) < 8:
                     continue
-                if any(s == title.lower() or s in title.lower().split(" | ")[0] for s in skip_words):
+                title_lower = title.lower()
+                if any(s in title_lower for s in skip_words):
                     continue
                 # Skip links that look like URLs or navigation
                 if title.startswith(("http", "//", "#", "+")):
                     continue
                 if re.match(r'^[A-Z][a-z]+$', title):  # Single word like "English"
+                    continue
+                # Quick keyword pre-filter: must contain at least one job-related word
+                if not any(kw in title_lower for kw in job_title_keywords):
                     continue
 
                 if href.startswith("/"):
