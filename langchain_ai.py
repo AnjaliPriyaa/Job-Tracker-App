@@ -282,3 +282,59 @@ class JobMatcher:
                 title, description, keywords, target_companies,
                 exclude_keywords, exclude_roles, exclude_levels, max_experience, min_experience,
             )
+
+
+# ---------------------------------------------------------------------------
+# @tool wrapper for DeepAgent
+# ---------------------------------------------------------------------------
+
+# Module-level singleton — created once, reused across all tool calls
+_matcher: Optional[JobMatcher] = None
+
+
+def _get_matcher() -> JobMatcher:
+    global _matcher
+    if _matcher is None:
+        _matcher = JobMatcher()
+    return _matcher
+
+
+def match_job_tool(job_data: str) -> str:
+    """
+    Evaluate a job against user preferences using AI.
+
+    Input JSON: {
+        "title": "DevOps Engineer",
+        "company": "Google",
+        "description": "Job description text...",
+        "keywords": ["devops", "kubernetes", ...],
+        "target_companies": ["Google", "Microsoft", ...],
+        "target_roles": ["DevOps Engineer", "SRE", ...],
+        "exclude_keywords": ["frontend", ...],
+        "exclude_roles": ["manager", ...],
+        "exclude_levels": ["junior", ...],
+        "max_experience": 6,
+        "min_experience": 4
+    }
+    Returns JSON: {"match": true/false, "confidence": 0.0-1.0, "reason": "..."}
+    """
+    try:
+        data = json.loads(job_data)
+    except json.JSONDecodeError:
+        return json.dumps({"match": False, "confidence": 1.0, "reason": "Invalid JSON input"})
+
+    matcher = _get_matcher()
+    result = matcher.match(
+        title=data.get("title", ""),
+        company=data.get("company", ""),
+        description=data.get("description", ""),
+        keywords=data.get("keywords", []),
+        target_companies=data.get("target_companies", []),
+        target_roles=data.get("target_roles", []),
+        exclude_keywords=data.get("exclude_keywords", []),
+        exclude_roles=data.get("exclude_roles", []),
+        exclude_levels=data.get("exclude_levels", []),
+        max_experience=data.get("max_experience", 6),
+        min_experience=data.get("min_experience", 0),
+    )
+    return json.dumps({"match": result.match, "confidence": result.confidence, "reason": result.reason})

@@ -24,8 +24,8 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Run job tracker (deterministic pipeline)
-      run: python agent_app_simple.py
+    - name: Run agentic job tracker (DeepAgents)
+      run: python agentic_tracker.py
       env:
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
