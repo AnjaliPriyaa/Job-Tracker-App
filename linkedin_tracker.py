@@ -63,7 +63,8 @@ WORKFLOW:
    e. If match=false → manage_seen_jobs action="add"
 4. Report total found, matched, notified
 
-Keep Telegram messages short: "🔔 *Title*\n🏢 Company\n🔗 URL\n_reason(max 150 chars)_"
+Telegram format: "🔔 *Title*\n🏢 Company\n📌 [LinkedIn]\n🔗 URL\n📂 linkedin_search_url\n_reason(max 120 chars)_"
+Include 📌 [LinkedIn] tag and 📂 with the LinkedIn search URL in every message.
 """
 
     agent = create_deep_agent(

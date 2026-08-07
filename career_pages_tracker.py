@@ -107,15 +107,20 @@ def fetch_description(job_url):
         return None
 
 
-def send_telegram(title, company, url, reason):
+def send_telegram(title, company, url, reason, source_label="", source_url=""):
     """Send Telegram notification."""
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         return False
 
-    reason_short = reason[:150] + ("..." if len(reason) > 150 else "")
-    msg = f"🔔 *{title or 'New Job'}*\n🏢 {company}\n🔗 {url}\n_{reason_short}_"
+    reason_short = reason[:120] + ("..." if len(reason) > 120 else "")
+    msg = f"🔔 *{title or 'New Job'}*\n🏢 {company}"
+    if source_label:
+        msg += f"\n📌 {source_label}"
+    msg += f"\n🔗 {url}\n_{reason_short}_"
+    if source_url:
+        msg += f"\n📂 {source_url}"
 
     try:
         resp = requests.post(
@@ -152,16 +157,36 @@ def main():
                 continue
 
             soup = BeautifulSoup(resp.text, "html.parser")
+
+            # Remove nav/footer/header — they contain non-job links
+            for tag in soup.find_all(["nav", "footer", "header", "script", "style"]):
+                tag.decompose()
+
             company_jobs = 0
             company_matched = 0
+
+            # Skip words that are never job titles
+            skip_words = [
+                "department", "location", "team", "view all", "privacy",
+                "terms", "sitemap", "english", "français", "deutsch",
+                "apply now", "candidate privacy", "job search",
+                "life at", "careers at", "anthem", "copyright",
+                "accessibility", "cookie", "legal", "press", "blog",
+                "sign in", "log in", "contact", "about", "news",
+            ]
 
             for link in soup.find_all("a", href=True):
                 href = link.get("href", "")
                 title = link.get_text(strip=True)
 
-                if not title or len(title) < 5:
+                if not title or len(title) < 8:
                     continue
-                if any(s in title.lower() for s in ["department", "location", "team", "view all"]):
+                if any(s == title.lower() or s in title.lower().split(" | ")[0] for s in skip_words):
+                    continue
+                # Skip links that look like URLs or navigation
+                if title.startswith(("http", "//", "#", "+")):
+                    continue
+                if re.match(r'^[A-Z][a-z]+$', title):  # Single word like "English"
                     continue
 
                 if href.startswith("/"):
@@ -207,7 +232,11 @@ def main():
                     company_matched += 1
                     logger.info("  🎯 MATCH: %s at %s (%.0f%%)", actual_title, actual_company, result.confidence * 100)
 
-                    if send_telegram(actual_title, actual_company, href, result.reason):
+                    if send_telegram(
+                        actual_title, actual_company, href, result.reason,
+                        source_label=f"[Career Page — {company}]",
+                        source_url=url,
+                    ):
                         total_notified += 1
                         logger.info("  ✅ Notified: %s at %s", actual_title, actual_company)
                     else:
