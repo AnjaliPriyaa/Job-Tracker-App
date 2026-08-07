@@ -259,6 +259,7 @@ class JobMatcher:
             f"5. REJECT if description mentions: {exclude_levels_str}\n"
             f"6. REJECT if requires MORE than {max_experience} years experience\n"
             f"7. REJECT if the core job function doesn't match the target roles\n"
+            f"8. REJECT if location is outside India (only Bengaluru, Hyderabad, India, or Remote allowed)\n"
             f"{min_exp_rule}\n"
             f"Be STRICT — reject if ANY rule is violated. Return your verdict as JSON."
         )

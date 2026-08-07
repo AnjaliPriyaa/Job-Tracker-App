@@ -8,7 +8,7 @@ and Telegram notifications.
 import json
 import logging
 import os
-import shutil
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -49,18 +49,10 @@ def load_json(path: Path, default: Any = None) -> Any:
 
 
 def save_json(path: Path, data: Any) -> None:
-    """Write *data* as JSON."""
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    try:
-        with open(tmp, "w") as fh:
-            json.dump(data, fh)
-        shutil.move(str(tmp), str(path))
-    except Exception:
-        # Fallback: direct write
-        with open(path, "w") as fh:
-            json.dump(data, fh)
-        if tmp.exists():
-            tmp.unlink()
+    """Write *data* as JSON directly."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(data, fh)
 
 
 # ===================================================================
@@ -135,6 +127,65 @@ def check_and_cleanup() -> bool:
         return True
 
     return False
+
+
+# ===================================================================
+# Telegram
+# ===================================================================
+
+# ===================================================================
+# Location filter
+# ===================================================================
+
+# Non-India location patterns to reject
+_REJECT_LOCATIONS = [
+    r'\b(?:London|Manchester|Birmingham|Edinburgh|Glasgow|Bristol|Leeds)\b',
+    r'\b(?:New York|San Francisco|Seattle|Austin|Chicago|Boston|Los Angeles|Denver|Portland|Miami|Atlanta|Dallas)\b',
+    r'\b(?:Poland|Warsaw|Krak[oó]w|Gda[nń]sk|Wroc[łl]aw)\b',
+    r'\b(?:Toronto|Vancouver|Montreal|Ottawa|Calgary)\b',
+    r'\b(?:Berlin|Munich|Hamburg|Frankfurt|Stuttgart)\b',
+    r'\b(?:Paris|Lyon|Marseille|Toulouse)\b',
+    r'\b(?:Sydney|Melbourne|Brisbane|Perth)\b',
+    r'\b(?:Tokyo|Osaka|Kyoto)\b',
+    r'\b(?:Dubai|Abu Dhabi|Riyadh)\b',
+    r'\b(?:Singapore|Hong Kong|Taipei|Seoul)\b',
+    r'\b(?:Dublin|Cork)\b',
+    r'\b(?:Amsterdam|Rotterdam|Eindhoven)\b',
+    r'\b(?:Stockholm|Oslo|Copenhagen|Helsinki)\b',
+    r'\b(?:Z[uü]rich|Geneva|Basel)\b',
+    r'\b(?:UK\b|United Kingdom)\b',
+    r'\b\bUS\b(?:\s*$|[,.)])\b',
+]
+
+# Acceptable location patterns
+_ACCEPT_LOCATIONS = [
+    r'\b(?:Bengaluru|Bangalore)\b',
+    r'\b(?:Hyderabad|Secunderabad)\b',
+    r'\bIndia\b',
+    r'\bRemote\b',
+]
+
+def is_valid_location(description: str) -> bool:
+    """
+    Check if a job's location is acceptable.
+    Accepts: Bengaluru/Bangalore, Hyderabad, India, or Remote (without specific non-India location).
+    Rejects: Jobs explicitly in other countries/cities.
+    """
+    text = description.lower()
+    text_head = text[:500]  # Location usually mentioned early
+
+    # Check for non-India locations (strong reject signal)
+    for pattern in _REJECT_LOCATIONS:
+        if re.search(pattern, text_head):
+            return False
+
+    # Check for acceptable locations
+    for pattern in _ACCEPT_LOCATIONS:
+        if re.search(pattern, text_head):
+            return True
+
+    # If no location mentioned at all, let it through (conservative)
+    return True
 
 
 # ===================================================================

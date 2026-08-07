@@ -31,7 +31,7 @@ logger = logging.getLogger("career_pages")
 # Config
 # ---------------------------------------------------------------------------
 
-from utils import load_config, load_seen_jobs, save_seen_jobs
+from utils import load_config, load_seen_jobs, save_seen_jobs, is_valid_location
 from langchain_ai import JobMatcher
 
 config = load_config()
@@ -223,6 +223,11 @@ def main():
 
                 # --- Company check ---
                 if not any(tc.lower() in actual_company.lower() for tc in target_companies):
+                    continue
+
+                # --- Location check ---
+                if not is_valid_location(desc_data["description"]):
+                    logger.debug("  ✗ Non-India location: %s at %s", actual_title, actual_company)
                     continue
 
                 # --- AI Match ---
