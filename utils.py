@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent
 SEEN_JOBS_FILE = _HERE / "seen_jobs.json"
+SEEN_JOBS_LINKEDIN_FILE = _HERE / "seen_jobs_linkedin.json"
+SEEN_JOBS_CAREER_PAGES_FILE = _HERE / "seen_jobs_career_pages.json"
 CLEANUP_META_FILE = _HERE / "cleanup_meta.json"
 CONFIG_FILE = _HERE / "config.json"
 
@@ -83,19 +85,54 @@ def save_seen_jobs(jobs: set[str]) -> None:
     save_json(SEEN_JOBS_FILE, sorted(jobs))
 
 
-def is_job_seen(job_id: str) -> bool:
+def is_job_seen(job_id: str, source: str = "") -> bool:
     """Check whether a single job ID has already been processed."""
+    if source == "linkedin":
+        return job_id in load_seen_jobs_linkedin()
+    elif source == "career_page":
+        return job_id in load_seen_jobs_career_pages()
     seen = load_seen_jobs()
     return job_id in seen
 
 
-def mark_job_seen(job_id: str) -> None:
+def mark_job_seen(job_id: str, source: str = "") -> None:
     """Add a job ID to the seen set and persist immediately."""
     if len(str(job_id)) < MIN_JOB_ID_LENGTH:
-        return  # silently ignore bogus IDs
-    seen = load_seen_jobs()
-    seen.add(str(job_id))
-    save_seen_jobs(seen)
+        return
+    if source == "linkedin":
+        seen = load_seen_jobs_linkedin()
+        seen.add(str(job_id))
+        save_seen_jobs_linkedin(seen)
+    elif source == "career_page":
+        seen = load_seen_jobs_career_pages()
+        seen.add(str(job_id))
+        save_seen_jobs_career_pages(seen)
+    else:
+        seen = load_seen_jobs()
+        seen.add(str(job_id))
+        save_seen_jobs(seen)
+
+
+def load_seen_jobs_linkedin() -> set[str]:
+    """Return the set of already-seen LinkedIn job IDs."""
+    raw = load_json(SEEN_JOBS_LINKEDIN_FILE, default=[])
+    return {str(jid) for jid in raw if isinstance(jid, (str, int))}
+
+
+def save_seen_jobs_linkedin(jobs: set[str]) -> None:
+    """Persist the LinkedIn seen-jobs set."""
+    save_json(SEEN_JOBS_LINKEDIN_FILE, sorted(jobs))
+
+
+def load_seen_jobs_career_pages() -> set[str]:
+    """Return the set of already-seen career page job IDs."""
+    raw = load_json(SEEN_JOBS_CAREER_PAGES_FILE, default=[])
+    return {str(jid) for jid in raw if isinstance(jid, (str, int))}
+
+
+def save_seen_jobs_career_pages(jobs: set[str]) -> None:
+    """Persist the career pages seen-jobs set."""
+    save_json(SEEN_JOBS_CAREER_PAGES_FILE, sorted(jobs))
 
 
 # ===================================================================

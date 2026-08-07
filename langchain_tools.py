@@ -17,9 +17,77 @@ from bs4 import BeautifulSoup
 from langchain_core.tools import tool
 
 from utils import load_config as _load_config_util
-from utils import load_seen_jobs, save_seen_jobs, MIN_JOB_ID_LENGTH
+from utils import load_seen_jobs, save_seen_jobs, load_seen_jobs_linkedin, save_seen_jobs_linkedin, MIN_JOB_ID_LENGTH
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# LinkedIn scraper
+# ---------------------------------------------------------------------------
+
+RETRY_MAX = 3
+RETRY_BACKOFF = 2.0
+
+
+def _retry_get(url: str, timeout: int = 15, extra_headers=None) -> requests.Response:
+    """GET with exponential backoff retry."""
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}
+    if extra_headers:
+        headers.update(extra_headers)
+    last_exc = None
+    for attempt in range(1, RETRY_MAX + 1):
+        try:
+            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < RETRY_MAX:
+                wait = RETRY_BACKOFF**attempt
+                time.sleep(wait)
+    raise last_exc
+
+
+@tool
+def search_linkedin(input_data: str) -> str:
+    """
+    Search LinkedIn for jobs matching criteria.
+
+    Input JSON: {"url": "<linkedin_search_url>", "target_companies": [...]}
+    Returns JSON: {"jobs": [{"id":..., "title":..., "company":..., "url":..., "source":"linkedin"}]}
+    """
+    try:
+        data = json.loads(input_data)
+    except json.JSONDecodeError:
+        return json.dumps({"error": "Invalid JSON", "jobs": []})
+
+    url = data.get("url", "")
+    target_companies = data.get("target_companies", [])
+
+    try:
+        resp = _retry_get(url)
+    except requests.RequestException as e:
+        return json.dumps({"error": str(e), "jobs": []})
+
+    raw_html = resp.text
+    jobs: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for match in re.finditer(r"urn:li:jobPosting:(\d{7,15})", raw_html):
+        job_id = match.group(1)
+        if job_id not in seen_ids:
+            seen_ids.add(job_id)
+            jobs.append({
+                "id": f"li_{job_id}",
+                "title": "",
+                "company": "",
+                "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+                "source": "linkedin",
+            })
+
+    logger.info("LinkedIn: found %d jobs", len(jobs))
+    return json.dumps({"jobs": jobs})
 
 # ---------------------------------------------------------------------------
 # Retry helper
@@ -84,13 +152,13 @@ def manage_seen_jobs(input_data: str) -> str:
         return json.dumps({"error": f"job_id too short (min {MIN_JOB_ID_LENGTH} digits)"})
 
     if data.get("action") == "check":
-        seen = job_id in load_seen_jobs()
+        seen = job_id in load_seen_jobs_linkedin()
         return json.dumps({"seen": seen})
 
     if data.get("action") == "add":
-        seen = load_seen_jobs()
+        seen = load_seen_jobs_linkedin()
         seen.add(job_id)
-        save_seen_jobs(seen)
+        save_seen_jobs_linkedin(seen)
         return json.dumps({"status": "added"})
 
     return json.dumps({"error": f"Unknown action: {data.get('action')}"})
@@ -440,8 +508,12 @@ def filter_jobs_by_experience(input_data: str) -> str:
 # Tool registry
 # ---------------------------------------------------------------------------
 
+# Backward-compat alias
+scrape_jobs = search_linkedin
+
 ALL_TOOLS = [
     load_config,
+    search_linkedin,
     scrape_jobs,
     get_job_description,
     manage_seen_jobs,

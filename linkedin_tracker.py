@@ -28,8 +28,7 @@ def main():
     from langchain.agents.middleware import TodoListMiddleware
     from langchain_core.tools import tool
 
-    from tools.scraper_tools import search_linkedin
-    from langchain_tools import get_job_description, send_telegram, manage_seen_jobs
+    from langchain_tools import search_linkedin, get_job_description, send_telegram, manage_seen_jobs
     from langchain_ai import match_job_tool
     from utils import load_config
 

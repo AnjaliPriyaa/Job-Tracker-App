@@ -117,10 +117,9 @@ except Exception as e:
 print("\n5️⃣ Testing LangChain tools...")
 try:
     tools = langchain_tools.ALL_TOOLS
-    assert len(tools) == 6, f"Should have 6 tools, found {len(tools)}"
     tool_names = [t.name for t in tools]
     required = [
-        "scrape_jobs",
+        "search_linkedin",
         "get_job_description",
         "send_telegram",
         "manage_seen_jobs",

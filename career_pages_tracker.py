@@ -31,7 +31,7 @@ logger = logging.getLogger("career_pages")
 # Config
 # ---------------------------------------------------------------------------
 
-from utils import load_config, load_seen_jobs, save_seen_jobs, is_valid_location
+from utils import load_config, load_seen_jobs_career_pages, save_seen_jobs_career_pages, is_valid_location
 from langchain_ai import JobMatcher
 
 config = load_config()
@@ -46,7 +46,7 @@ exclude_levels = config.get("exclude_levels", [])
 max_exp = config.get("experience_years", 6)
 min_exp = config.get("min_experience_years", 4)
 confidence_threshold = config.get("confidence_threshold", 0.6)
-seen_jobs = load_seen_jobs()
+seen_jobs = load_seen_jobs_career_pages()
 
 RETRY_MAX = 2
 ATS_PATTERNS = [
@@ -264,7 +264,7 @@ def main():
                             company, company_jobs, company_matched,
                             company_matched, url)
                 found = True
-                save_seen_jobs(seen_jobs)  # Persist after each company
+                save_seen_jobs_career_pages(seen_jobs)  # Persist after each company
                 break  # Found jobs for this company, skip other ATS patterns
 
         if not found:
@@ -273,7 +273,7 @@ def main():
     logger.info("=" * 50)
     logger.info("DONE: %d companies checked, %d jobs, %d matched, %d notified",
                 len(companies_to_check), total_jobs, total_matched, total_notified)
-    save_seen_jobs(seen_jobs)
+    save_seen_jobs_career_pages(seen_jobs)
 
 
 if __name__ == "__main__":
