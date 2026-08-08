@@ -69,8 +69,8 @@ def build_agent():
 
     # Budget — physically enforced by middleware
     budget = BudgetTracker(
-        max_tool_calls=500, max_searches=30, max_notifications=25,
-        max_investigation_depth=5, timeout_seconds=720,
+        max_tool_calls=1000, max_searches=200, max_notifications=50,
+        max_investigation_depth=10, timeout_seconds=720,
     )
     set_budget(budget)  # Make accessible to tools
 

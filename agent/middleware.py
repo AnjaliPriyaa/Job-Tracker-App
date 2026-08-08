@@ -1,6 +1,6 @@
 """
 Execution budget middleware — physically enforces limits to prevent
-runaway agents. Enforced as middleware/tool-level checks, not just prompts.
+runaway agents. Subclasses AgentMiddleware for proper DeepAgents integration.
 """
 
 import json
@@ -8,9 +8,11 @@ import logging
 import time
 from typing import Any
 
+from langchain.agents.middleware import AgentMiddleware
+
 logger = logging.getLogger(__name__)
 
-# Module-level budget instance — set by agent.py during build, accessible to tools
+# Module-level budget instance — set during agent build, accessible to tools
 _active_budget = None  # type: BudgetTracker | None
 
 
@@ -28,8 +30,8 @@ def set_budget(budget):
 class BudgetTracker:
     """Tracks execution budget — physically enforced limits."""
 
-    def __init__(self, max_tool_calls: int = 500, max_searches: int = 30,
-                 max_notifications: int = 25, max_investigation_depth: int = 5,
+    def __init__(self, max_tool_calls: int = 1000, max_searches: int = 200,
+                 max_notifications: int = 50, max_investigation_depth: int = 10,
                  timeout_seconds: int = 720):
         self.max_tool_calls = max_tool_calls
         self.max_searches = max_searches
@@ -52,7 +54,7 @@ class BudgetTracker:
             if self.searches > self.max_searches:
                 return {
                     "blocked": True,
-                    "reason": f"Search limit ({self.max_searches}) reached.",
+                    "reason": f"Search budget reached ({self.max_searches}).",
                     "searches_used": self.searches,
                 }
 
@@ -61,14 +63,14 @@ class BudgetTracker:
             if self.notifications > self.max_notifications:
                 return {
                     "blocked": True,
-                    "reason": f"Notification limit ({self.max_notifications}) reached.",
+                    "reason": f"Notification budget reached ({self.max_notifications}).",
                     "notifications_used": self.notifications,
                 }
 
         if self.tool_calls > self.max_tool_calls:
             return {
                 "blocked": True,
-                "reason": f"Tool call limit ({self.max_tool_calls}) exceeded.",
+                "reason": f"Tool call budget exceeded ({self.max_tool_calls}).",
                 "tool_calls_used": self.tool_calls,
             }
 
@@ -76,14 +78,14 @@ class BudgetTracker:
         if elapsed > self.timeout_seconds:
             return {
                 "blocked": True,
-                "reason": f"Timeout ({self.timeout_seconds}s) reached.",
+                "reason": f"Execution timeout ({self.timeout_seconds}s) reached.",
                 "elapsed_seconds": int(elapsed),
             }
 
         return None
 
     def check_investigation(self, canonical_id: str) -> dict | None:
-        """Check if investigation depth is exceeded."""
+        """Check if investigation depth is exceeded for a specific job."""
         depth = self.investigation_depth.get(canonical_id, 0) + 1
         self.investigation_depth[canonical_id] = depth
         if depth > self.max_investigation_depth:
@@ -95,13 +97,25 @@ class BudgetTracker:
         return None
 
 
-class BudgetMiddleware:
-    """Wraps tool calls with budget enforcement."""
+class BudgetMiddleware(AgentMiddleware):
+    """
+    Middleware that wraps tool calls with emergency budget enforcement.
+    Inherits from AgentMiddleware for proper DeepAgents integration.
+
+    Enforces: max tool calls, max searches, max notifications, timeout.
+    Investigation depth is enforced by evaluate_job tool via get_budget().
+    """
 
     def __init__(self, budget: BudgetTracker | None = None):
+        super().__init__()
         self.budget = budget or BudgetTracker()
 
-    def wrap_tool_call(self, request: Any, handler: Any):
+    def wrap_tool_call(
+        self,
+        request: Any,
+        handler: Any,
+    ) -> Any:
+        """Intercept tool calls and enforce budget limits."""
         tool_name = getattr(request, "name", "unknown") if hasattr(request, "name") else str(request)
         block = self.budget.check_tool_call(tool_name)
         if block:
