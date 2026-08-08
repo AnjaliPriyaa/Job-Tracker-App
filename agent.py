@@ -41,7 +41,7 @@ def build_agent():
 
     from tools import ALL_TOOLS
     from agent.prompts import SYSTEM_PROMPT
-    from agent.middleware import BudgetMiddleware, BudgetTracker
+    from agent.middleware import BudgetMiddleware, BudgetTracker, set_budget
 
     # Model
     deepseek_key = os.getenv("DEEPSEEK_API_KEY")
@@ -72,6 +72,7 @@ def build_agent():
         max_tool_calls=500, max_searches=30, max_notifications=25,
         max_investigation_depth=5, timeout_seconds=720,
     )
+    set_budget(budget)  # Make accessible to tools
 
     agent = create_deep_agent(
         model=model,

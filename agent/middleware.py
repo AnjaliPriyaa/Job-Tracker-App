@@ -10,6 +10,20 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Module-level budget instance — set by agent.py during build, accessible to tools
+_active_budget = None  # type: BudgetTracker | None
+
+
+def get_budget():
+    """Get the active budget tracker for the current agent run."""
+    return _active_budget
+
+
+def set_budget(budget):
+    """Set the active budget tracker. Called by agent.py during build."""
+    global _active_budget
+    _active_budget = budget
+
 
 class BudgetTracker:
     """Tracks execution budget — physically enforced limits."""

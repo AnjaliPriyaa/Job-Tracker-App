@@ -21,6 +21,7 @@ class EvaluateJobInput(BaseModel):
     company: str = Field(description="Company name")
     description: str = Field(description="Full job description text")
     location: str = Field(default="", description="Job location")
+    canonical_id: str = Field(default="", description="Canonical job ID for investigation tracking")
     target_companies: list[str] = Field(default_factory=list)
     target_roles: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
@@ -108,7 +109,7 @@ def _deterministic_fallback(job_input: EvaluateJobInput) -> EvaluationResult:
 @tool(args_schema=EvaluateJobInput)
 def evaluate_job(
     title: str, company: str, description: str,
-    location: str = "",
+    location: str = "", canonical_id: str = "",
     target_companies: list[str] | None = None,
     target_roles: list[str] | None = None,
     keywords: list[str] | None = None,
@@ -122,6 +123,22 @@ def evaluate_job(
     decision: match, reject, or investigate.
     Use this to determine if a job is worth notifying.
     """
+    # Check investigation depth budget before evaluating
+    from agent.middleware import get_budget
+    budget = get_budget()
+    if budget and canonical_id:
+        block = budget.check_investigation(canonical_id)
+        if block:
+            return json.dumps({
+                "decision": "reject",
+                "score": 0.0,
+                "confidence": 1.0,
+                "reasons": [block["reason"]],
+                "missing_information": [],
+                "needs_investigation": False,
+                "investigation_depth": block.get("depth", 0),
+            })
+
     job_input = EvaluateJobInput(
         title=title, company=company, description=description, location=location,
         target_companies=target_companies or [], target_roles=target_roles or [],
