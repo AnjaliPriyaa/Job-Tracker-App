@@ -1,140 +1,115 @@
-# Job Tracker
+# Agentic Job Tracker
 
-Agentic AI-powered job tracker that searches **LinkedIn and company career pages**, filters matches using DeepSeek, and notifies you via Telegram.
+An **autonomous AI agent** that searches for DevOps, Cloud, SRE, and Platform Engineering jobs across multiple sources, evaluates them against your criteria, and notifies you via Telegram.
 
-## Features
+## What Makes This Agentic?
 
-- **Two-source search**: LinkedIn job listings + company career pages (Greenhouse/Lever/Ashby)
-- **Agentic orchestration** using [LangChain DeepAgents](https://docs.langchain.com/oss/python/deepagents/overview) — the agent plans, searches, and evaluates autonomously
-- **AI-powered filtering** using DeepSeek (free tier) or Google Gemini
-- **Telegram notifications** with job title, company, link, and match reason
-- **Automatic dedup** — tracks seen jobs so you never get the same notification twice
-- **Smart filtering** by company, role, keywords, experience, and exclusions
-- **Retry logic** with exponential backoff for scraping and fetching
-- **Auto cleanup** every 10 days (clears seen-jobs history)
+The **LLM agent decides what to do** — there is no hard-coded workflow. The agent:
+- Chooses which search tools to use based on what it discovers
+- Investigates uncertain jobs instead of blindly accepting/rejecting
+- Recovers from tool failures by trying alternative approaches
+- Decides when enough jobs have been found
+- Adapts its strategy dynamically
 
-## Quick Setup
-
-### 1. Get a free AI API key
-
-**Recommended: DeepSeek (free tier)**
-1. Sign up at [platform.deepseek.com](https://platform.deepseek.com)
-2. Go to API Keys → create a key
-3. New users get free credits
-
-**Alternative: Google Gemini**
-1. Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-
-### 2. Set up Telegram bot
-
-1. Create a bot with [@BotFather](https://t.me/BotFather) → get the token
-2. Get your chat ID from [@userinfobot](https://t.me/userinfobot)
-
-### 3. Install and configure
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy and edit the env file
-cp .env.example .env
-# Add: DEEPSEEK_API_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-```
-
-### 4. Configure `config.json`
-
-| Field | Description |
-|---|---|
-| `target_companies` | Companies to monitor (~114 configured) |
-| `roles` | Target roles: DevOps, SRE, Cloud, Platform Engineer |
-| `experience_years` / `min_experience_years` | Experience range (e.g., 4-6) |
-| `confidence_threshold` | Minimum AI confidence to notify (default 0.6) |
-| `exclude_roles` | Skip: manager, lead, architect, principal... |
-| `exclude_levels` | Skip: junior, intern, entry level... |
-| `exclude_keywords` | Skip: frontend, blockchain, 8+ years... |
-| `job_portals` | LinkedIn search URL and keywords |
-
-### 5. Run
-
-```bash
-# Agentic multi-platform tracker (requires Python 3.11+)
-python agentic_tracker.py
-
-# Deterministic LinkedIn-only pipeline (Python 3.9+)
-python agent_app_simple.py
-```
-
-### 6. Test
-
-```bash
-python test.py
-```
+The system provides **tools** (search, discover, fetch, evaluate, notify) and the agent uses them autonomously. Deterministic logic is limited to **policy enforcement** (security, rate limiting, dedup) — never workflow orchestration.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│              create_deep_agent()                  │
-│         (LangChain DeepAgents harness)            │
-│                                                   │
-│  Tools:                                           │
-│  ├── search_linkedin     ├── get_job_description  │
-│  ├── search_naukri       ├── match_job (DeepSeek) │
-│  ├── search_indeed       ├── send_telegram        │
-│  ├── search_instahyre    └── manage_seen_jobs     │
-│  └── search_career_pages                          │
-│                                                   │
-│  Middleware:                                      │
-│  └── TodoListMiddleware (task planning)           │
-└──────────────────────────────────────────────────┘
+agent.py (DeepAgents)
+  ├── tools/search_tools.py      — search_linkedin, search_ats, search_web_jobs
+  ├── tools/discovery_tools.py   — discover_company_career_page, discover_ats_platform
+  ├── tools/job_tools.py         — fetch_job, extract_job_details
+  ├── tools/evaluation_tools.py  — evaluate_job (AI matching)
+  ├── tools/state_tools.py       — save_job, get_seen_jobs, get_user_preferences
+  ├── tools/notification_tools.py — notify_user (→ PolicyEngine → Telegram)
+  │
+  ├── models/                    — Pydantic schemas (Job, SearchResult, EvaluationResult)
+  ├── storage/                   — SQLite (jobs, decisions, notifications, agent_runs)
+  ├── policies/                  — PolicyEngine (deterministic validation)
+  └── agent/                     — prompts.py, middleware.py (budget enforcement)
 ```
 
 ## How It Works
 
+1. **Agent gets preferences** via `get_user_preferences`
+2. **Agent searches** — chooses LinkedIn, ATS pages, or web search
+3. **Agent inspects** promising jobs with `fetch_job`
+4. **Agent evaluates** using `evaluate_job` (match / reject / investigate)
+5. **Agent investigates** uncertain jobs — deeper lookup, skill extraction
+6. **Agent notifies** via `notify_user` — PolicyEngine validates before Telegram
+7. **Agent stops** when it has sufficient matches or budget is exhausted
+
+## Quick Setup
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env: DEEPSEEK_API_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+python agent.py
 ```
-1. Agent loads config.json
-2. Searches ALL platforms in parallel
-3. For each job found:
-   → Fetches full description (extracts real company & title from page)
-   → Checks company against target list
-   → AI evaluates match (role, keywords, experience, exclusions)
-   → If match → Telegram notification → marks as seen
-4. Persists seen jobs to avoid duplicates
-```
+
+## Configuration
+
+Edit `config.json`:
+- `target_companies` — companies to monitor
+- `roles` — target job roles
+- `experience_years` / `min_experience_years`
+- `confidence_threshold`
+- `exclude_roles`, `exclude_levels`, `exclude_keywords`
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `DEEPSEEK_API_KEY` | Recommended | DeepSeek API key (free tier) |
-| `DEEPSEEK_MODEL` | Optional | Model name (default: `deepseek-chat`) |
-| `GEMINI_API_KEY` | Alternative | Google Gemini API key |
-| `TELEGRAM_TOKEN` | Yes | Telegram bot token |
-| `TELEGRAM_CHAT_ID` | Yes | Your Telegram chat ID |
-
-## Files
-
-| File | Purpose |
+| Variable | Description |
 |---|---|
-| `agentic_tracker.py` | **Agentic multi-platform tracker** (CI entry point) |
-| `agent_app_simple.py` | Deterministic LinkedIn-only pipeline (local fallback) |
-| `langchain_ai.py` | AI job matching with DeepSeek/Gemini + structured output |
-| `langchain_tools.py` | Shared tools: Telegram, description fetch, seen-jobs |
-| `tools/scraper_tools.py` | Platform scrapers: LinkedIn, Naukri, Indeed, Instahyre, Career Pages |
-| `utils.py` | Shared utilities (JSON I/O, cleanup) |
-| `config.json` | Job search preferences and platform URLs |
-| `.env.example` | Environment variable template |
-| `test.py` | End-to-end test suite |
+| `DEEPSEEK_API_KEY` | DeepSeek API key (free tier) |
+| `TELEGRAM_TOKEN` | Telegram bot token |
+| `TELEGRAM_CHAT_ID` | Your chat ID |
+
+## Policy Layer (Deterministic)
+
+The `PolicyEngine` enforces rules that the AI cannot bypass:
+- Target company verification
+- Duplicate notification prevention
+- Excluded role/level filtering
+- Daily notification rate limiting
+- Location validation (India only)
+
+## Execution Budgets
+
+Physically enforced limits prevent runaway agents:
+- 80 max tool calls
+- 8 max searches
+- 15 max notifications
+- 10 minute timeout
 
 ## GitHub Actions
 
-Runs automatically every 2 hours via `agentic_tracker.py`. Add your API keys as [repository secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets):
-- `DEEPSEEK_API_KEY`
-- `TELEGRAM_TOKEN`
-- `TELEGRAM_CHAT_ID`
+Two independent schedules invoke the **same `agent.py`** with different run contexts. Schedules encode only *when* and *initial focus* — the agent decides the actual workflow.
 
-Also supports manual trigger: **Actions → Job Tracker → Run workflow**
+| Workflow | Schedule | Context |
+|---|---|---|
+| `linkedin-run.yml` | Every 2 hours | LinkedIn-focused initial search |
+| `career-run.yml` | Daily 10 AM IST (4:30 UTC) | Career page discovery + ATS search |
 
----
+Both share the same SQLite state, tools, policies, and budget infrastructure.
 
-Made with LangChain DeepAgents, DeepSeek, and Python
+```yaml
+# linkedin-run.yml
+env:
+  RUN_CONTEXT: linkedin
+
+# career-run.yml  
+env:
+  RUN_CONTEXT: career
+```
+
+## Testing
+
+```bash
+# Policy tests
+python -m pytest tests/test_policy.py -v
+
+# Agenticity tests  
+python -m pytest tests/test_agenticity.py -v
+```

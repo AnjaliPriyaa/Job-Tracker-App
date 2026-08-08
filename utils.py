@@ -33,7 +33,7 @@ CONFIG_FILE = _HERE / "config.json"
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-CLEANUP_DAYS = 10
+CLEANUP_DAYS = 30
 MIN_JOB_ID_LENGTH = 5  # real LinkedIn job IDs are 10 digits; 5 is a safety floor
 
 
@@ -140,7 +140,7 @@ def save_seen_jobs_career_pages(jobs: set[str]) -> None:
 # ===================================================================
 
 def check_and_cleanup() -> bool:
-    """Clear seen_jobs.json every CLEANUP_DAYS.  Returns True if cleaned."""
+    """Clear ALL seen-jobs files every CLEANUP_DAYS.  Returns True if cleaned."""
     now = datetime.now(timezone.utc)
     meta = load_json(CLEANUP_META_FILE, default={})
     last_str: Optional[str] = meta.get("last_cleanup")
@@ -159,7 +159,10 @@ def check_and_cleanup() -> bool:
         last_dt = last_dt.replace(tzinfo=timezone.utc)
 
     if now - last_dt >= timedelta(days=CLEANUP_DAYS):
+        logger.info("🧹 Monthly cleanup: clearing all seen-jobs files")
         save_json(SEEN_JOBS_FILE, [])
+        save_json(SEEN_JOBS_LINKEDIN_FILE, [])
+        save_json(SEEN_JOBS_CAREER_PAGES_FILE, [])
         save_json(CLEANUP_META_FILE, {"last_cleanup": now.isoformat()})
         return True
 

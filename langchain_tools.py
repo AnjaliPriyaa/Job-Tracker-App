@@ -16,8 +16,13 @@ import requests
 from bs4 import BeautifulSoup
 from langchain_core.tools import tool
 
-from utils import load_config as _load_config_util
-from utils import load_seen_jobs, save_seen_jobs, load_seen_jobs_linkedin, save_seen_jobs_linkedin, MIN_JOB_ID_LENGTH
+from utils import (
+    load_config as _load_config_util,
+    load_seen_jobs, save_seen_jobs,
+    load_seen_jobs_linkedin, save_seen_jobs_linkedin,
+    load_seen_jobs_career_pages, save_seen_jobs_career_pages,
+    MIN_JOB_ID_LENGTH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,14 +138,36 @@ def load_config(_: str = "") -> str:
 # 2.  Manage seen jobs
 # ---------------------------------------------------------------------------
 
+# In-memory seen caches — avoids filesystem issues with DeepAgent sandbox
+# AND prevents race conditions when agent makes parallel tool calls
+_seen_linkedin: set[str] = set()
+_seen_career: set[str] = set()
+_seen_linkedin_loaded = False
+_seen_career_loaded = False
+
+
+def _get_seen_cache(source: str = "linkedin") -> set[str]:
+    global _seen_linkedin, _seen_career, _seen_linkedin_loaded, _seen_career_loaded
+    if source == "career_page":
+        if not _seen_career_loaded:
+            _seen_career = load_seen_jobs_career_pages()
+            _seen_career_loaded = True
+        return _seen_career
+    else:
+        if not _seen_linkedin_loaded:
+            _seen_linkedin = load_seen_jobs_linkedin()
+            _seen_linkedin_loaded = True
+        return _seen_linkedin
+
+
 @tool
 def manage_seen_jobs(input_data: str) -> str:
     """
     Check or add a job in the seen-jobs set.
 
     Input JSON:
-        {"action": "check", "job_id": "<id>"}
-        {"action": "add",   "job_id": "<id>"}
+        {"action": "check", "job_id": "<id>", "source": "linkedin|career_page"}
+        {"action": "add",   "job_id": "<id>", "source": "linkedin|career_page"}
     """
     try:
         data = json.loads(input_data)
@@ -148,20 +175,29 @@ def manage_seen_jobs(input_data: str) -> str:
         return json.dumps({"error": "Invalid JSON input"})
 
     job_id = str(data.get("job_id", ""))
+    source = data.get("source", "linkedin")
     if len(job_id) < MIN_JOB_ID_LENGTH:
         return json.dumps({"error": f"job_id too short (min {MIN_JOB_ID_LENGTH} digits)"})
 
+    cache = _get_seen_cache(source)
+
     if data.get("action") == "check":
-        seen = job_id in load_seen_jobs_linkedin()
-        return json.dumps({"seen": seen})
+        return json.dumps({"seen": job_id in cache})
 
     if data.get("action") == "add":
-        seen = load_seen_jobs_linkedin()
-        seen.add(job_id)
-        save_seen_jobs_linkedin(seen)
+        cache.add(job_id)
         return json.dumps({"status": "added"})
 
     return json.dumps({"error": f"Unknown action: {data.get('action')}"})
+
+
+def persist_seen_jobs():
+    """Persist all in-memory seen caches to disk. Call AFTER agent finishes."""
+    global _seen_linkedin_loaded, _seen_career_loaded
+    if _seen_linkedin_loaded:
+        save_seen_jobs_linkedin(_seen_linkedin)
+    if _seen_career_loaded:
+        save_seen_jobs_career_pages(_seen_career)
 
 
 # ---------------------------------------------------------------------------

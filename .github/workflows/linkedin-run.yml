@@ -1,16 +1,17 @@
-name: LinkedIn Tracker
+name: LinkedIn Search
 
 on:
   schedule:
-    - cron: '0 */3 * * *'
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  linkedin:
+  agent:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
     - name: Checkout code
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -23,9 +24,10 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Run LinkedIn tracker
-      run: python linkedin_tracker.py
+    - name: Run agent (LinkedIn context)
+      run: python agent.py
       env:
+        RUN_CONTEXT: linkedin
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -35,7 +37,7 @@ jobs:
       run: |
         git config user.email "actions@github.com"
         git config user.name "GitHub Actions"
-        git add seen_jobs_linkedin.json
+        git add job_tracker.db
         git diff --staged --quiet || git commit -m "update linkedin jobs"
         git push
       env:

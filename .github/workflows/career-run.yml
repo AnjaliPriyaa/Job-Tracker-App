@@ -1,5 +1,6 @@
-name: Career Pages Tracker
+name: Career Pages Search
 
+# Daily at 10:00 AM IST = 4:30 AM UTC
 on:
   schedule:
     - cron: '30 4 * * *'
@@ -9,8 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  career-pages:
+  agent:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
     - name: Checkout code
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -23,9 +25,10 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Run Career Pages tracker
-      run: python career_pages_tracker.py
+    - name: Run agent (Career Pages context)
+      run: python agent.py
       env:
+        RUN_CONTEXT: career
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -35,8 +38,8 @@ jobs:
       run: |
         git config user.email "actions@github.com"
         git config user.name "GitHub Actions"
-        git add seen_jobs_career_pages.json cleanup_meta.json
-        git diff --staged --quiet || git commit -m "update jobs"
+        git add job_tracker.db
+        git diff --staged --quiet || git commit -m "update career jobs"
         git push
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
