@@ -150,4 +150,76 @@ def extract_job_details(description: str) -> str:
     elif "contract" in text:
         details["employment_type"] = "contract"
 
+    # Location normalization
+    details["location"] = _normalize_location(description)
+
+    # Title normalization (if available)
+    details["normalized_title"] = _normalize_title("")
+
     return json.dumps(details)
+
+
+# ===========================================================================
+# Normalization helpers (exported for reuse)
+# ===========================================================================
+
+LOCATION_MAP = {
+    "bangalore": "Bengaluru",
+    "bengaluru": "Bengaluru",
+    "bengaluru, karnataka": "Bengaluru",
+    "bangalore, india": "Bengaluru",
+    "bangalore urban": "Bengaluru",
+    "hyderabad": "Hyderabad",
+    "secunderabad": "Hyderabad",
+    "greater hyderabad": "Hyderabad",
+}
+
+LOCATION_KEYWORDS = {
+    "remote": "Remote",
+    "hybrid": "Hybrid",
+    "onsite": "On-site",
+    "on-site": "On-site",
+    "work from home": "Remote",
+    "wfh": "Remote",
+}
+
+
+def _normalize_location(text: str) -> str:
+    """Normalize location strings to canonical forms."""
+    text_lower = text.lower()
+    for keyword, canonical in LOCATION_KEYWORDS.items():
+        if keyword in text_lower:
+            return canonical
+    for variant, canonical in LOCATION_MAP.items():
+        if variant in text_lower:
+            return canonical
+    if "india" in text_lower:
+        return "India"
+    return ""
+
+
+TITLE_NORMALIZE_MAP = {
+    "sr.": "Senior",
+    "sr ": "Senior ",
+    "senior": "Senior",
+    "lead": "Lead",
+    "principal": "Principal",
+    "staff": "Staff",
+    "associate": "Associate",
+    "junior": "Junior",
+    "jr.": "Junior",
+    "jr ": "Junior ",
+    "intern": "Intern",
+}
+
+
+def _normalize_title(title: str) -> str:
+    """Normalize job title to a canonical form."""
+    if not title:
+        return ""
+    t = title.strip()
+    for variant, canonical in sorted(TITLE_NORMALIZE_MAP.items(), key=lambda x: -len(x[0])):
+        t = re.sub(rf'\b{re.escape(variant)}\b', canonical, t, flags=re.IGNORECASE)
+    # Remove location suffixes like ", Bengaluru" or " - Bangalore"
+    t = re.sub(r'\s*[,–-]\s*(?:Bengaluru|Bangalore|Hyderabad|India|Remote).*$', '', t, flags=re.IGNORECASE)
+    return t.strip()

@@ -104,75 +104,104 @@ class WebSearchInput(BaseModel):
 @tool(args_schema=WebSearchInput)
 def search_web_jobs(query: str, location: str = "India", max_results: int = 15) -> str:
     """
-    Broad web-based job discovery. Searches multiple public job sources
-    by constructing direct URLs to aggregators and career platforms.
-
-    Use when platform-specific tools don't find enough results, or when
-    discovering jobs from sources not covered by other tools.
+    Broad web-based job discovery. Searches multiple job aggregators,
+    career platforms, and ATS sources. Use when platform-specific tools
+    don't find enough results or when discovering new sources.
     """
     results: list[dict] = []
     seen: set[str] = set()
     q = requests.utils.quote(query)
+    loc_q = requests.utils.quote(location)
 
-    # Source 1: Indeed (mobile-friendly endpoint)
+    # Source 1: Indeed India
     try:
-        indeed_url = f"https://in.indeed.com/jobs?q={q}&l={requests.utils.quote(location)}&fromage=7"
+        indeed_url = f"https://in.indeed.com/jobs?q={q}&l={loc_q}&fromage=7"
         resp = _retry_get(indeed_url, timeout=10, extra_headers={
-            "Accept": "text/html,application/xhtml+xml",
+            "Accept": "text/html",
             "Accept-Language": "en-US,en;q=0.9",
         })
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(resp.text, "html.parser")
-        for card in soup.find_all(["div", "li"], class_=True, limit=max_results * 2):
-            link = card.find("a", href=True)
-            if link:
-                href = link.get("href", "")
-                title = link.get_text(strip=True)
-                if title and len(title) > 5 and href not in seen:
+        for link in soup.find_all("a", href=True, limit=max_results * 2):
+            href = link.get("href", "")
+            title = link.get_text(strip=True)
+            if title and len(title) > 8 and "indeed" in href.lower():
+                if href not in seen:
                     seen.add(href)
                     if not href.startswith("http"):
                         href = "https://in.indeed.com" + href
                     results.append(SearchResult(
-                        source="web", source_job_id=href.split("?")[0],
+                        source="indeed", source_job_id=href.split("?")[0],
                         url=href, title=title, location=location,
                     ).model_dump())
+        logger.debug("Indeed: %d results", len([r for r in results if r["source"] == "indeed"]))
     except Exception as e:
-        logger.debug("Web/Indeed failed: %s", e)
+        logger.debug("Web/Indeed: %s", e)
 
-    # Source 2: Try ATS discovery for company-like terms in the query
-    company_candidate = query.split()[0]
+    # Source 2: Google Jobs via direct search (structured data in HTML)
     try:
-        from tools.discovery_tools import _company_to_slug
-        slug = _company_to_slug(company_candidate)
-        for pattern in ["https://boards.greenhouse.io/{slug}", "https://jobs.lever.co/{slug}"]:
-            try:
-                ats_url = pattern.format(slug=slug)
-                resp = _retry_get(ats_url, timeout=8)
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(resp.text, "html.parser")
-                for tag in soup.find_all(["nav", "footer", "header"]):
-                    tag.decompose()
-                for link in soup.find_all("a", href=True, limit=max_results):
-                    href = link.get("href", "")
-                    title = link.get_text(strip=True)
-                    if not title or len(title) < 8 or href in seen:
-                        continue
-                    seen.add(href)
-                    if href.startswith("/"):
-                        href = "/".join(ats_url.split("/")[:3]) + href
+        google_url = f"https://www.google.com/search?q=site:linkedin.com/jobs+{q}+{loc_q}&ibp=htl;jobs"
+        resp = _retry_get(google_url, timeout=8, extra_headers={
+            "Accept": "text/html",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        })
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # Google Jobs results are in g-card or div[data-hveid] elements
+        for link in soup.find_all("a", href=True, limit=max_results):
+            href = link.get("href", "")
+            title = link.get_text(strip=True)
+            if "/jobs/view/" in href and title and len(title) > 8:
+                jid_match = re.search(r"/jobs/view/(\d+)", href)
+                if jid_match and jid_match.group(1) not in seen:
+                    seen.add(jid_match.group(1))
                     results.append(SearchResult(
-                        source="ats", source_job_id=href,
-                        url=href, title=title, company=company_candidate,
+                        source="google_jobs", source_job_id=jid_match.group(1),
+                        url=f"https://www.linkedin.com/jobs/view/{jid_match.group(1)}",
+                        title=title, location=location,
                     ).model_dump())
-                break
-            except Exception:
-                continue
+        logger.debug("Google Jobs: %d results", len([r for r in results if r["source"] == "google_jobs"]))
     except Exception as e:
-        logger.debug("Web/ATS discovery failed: %s", e)
+        logger.debug("Web/Google: %s", e)
 
-    logger.info("Web search: %d results for '%s'", len(results), query)
+    # Source 3: Try ATS career pages for company-like terms
+    for word in query.split()[:3]:
+        if len(word) < 3:
+            continue
+        try:
+            from tools.discovery_tools import _company_to_slug
+            slug = _company_to_slug(word)
+            for pattern in ["https://boards.greenhouse.io/{slug}", "https://jobs.lever.co/{slug}"]:
+                try:
+                    ats_url = pattern.format(slug=slug)
+                    resp = _retry_get(ats_url, timeout=8)
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for tag in soup.find_all(["nav", "footer", "header"]):
+                        tag.decompose()
+                    for link in soup.find_all("a", href=True, limit=max_results):
+                        href = link.get("href", "")
+                        title = link.get_text(strip=True)
+                        if not title or len(title) < 8 or href in seen:
+                            continue
+                        seen.add(href)
+                        if href.startswith("/"):
+                            href = "/".join(ats_url.split("/")[:3]) + href
+                        results.append(SearchResult(
+                            source="ats", source_job_id=href,
+                            url=href, title=title, company=word.capitalize(),
+                        ).model_dump())
+                    break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug("Web/ATS: %s", e)
+
+    logger.info("Web search '%s': %d results from %d sources",
+                query, len(results), len(set(r["source"] for r in results)))
     return json.dumps({
         "results": results[:max_results],
+        "sources_searched": list(set(r["source"] for r in results)),
         "error": None if results else f"No results for '{query}'"
     })
 

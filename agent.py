@@ -42,6 +42,7 @@ def build_agent():
     from tools import ALL_TOOLS
     from agent.prompts import SYSTEM_PROMPT
     from agent.middleware import BudgetMiddleware, BudgetTracker, set_budget
+    from agent.stats import RunStats
 
     # Model
     deepseek_key = os.getenv("DEEPSEEK_API_KEY")
@@ -132,6 +133,7 @@ if __name__ == "__main__":
     print()
 
     agent, budget = build_agent()
+    stats = RunStats(run_id=f"{context}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
 
     try:
         result = agent.invoke({
@@ -161,6 +163,8 @@ if __name__ == "__main__":
         sys.exit(1)
     finally:
         elapsed = int(time.monotonic() - budget.start_time)
-        print(f"\n📈 Budget: {budget.tool_calls}/{budget.max_tool_calls} calls, "
-              f"{budget.searches} searches, {budget.notifications} notifications, "
+        stats.print_summary()
+        print(f"\n📈 Budget remaining: {budget.max_tool_calls - budget.tool_calls} calls, "
+              f"{budget.max_searches - budget.searches} searches, "
+              f"{budget.max_notifications - budget.notifications} notifications, "
               f"{elapsed}s elapsed")
