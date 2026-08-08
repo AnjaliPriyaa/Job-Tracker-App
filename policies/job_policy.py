@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from storage import JobRepository, NotificationRepository
+from storage.database import get_db
 
 
 def _load_config():

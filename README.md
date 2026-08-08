@@ -77,11 +77,12 @@ The `PolicyEngine` enforces rules that the AI cannot bypass:
 
 ## Execution Budgets
 
-Physically enforced limits prevent runaway agents:
-- 80 max tool calls
-- 8 max searches
-- 15 max notifications
-- 10 minute timeout
+Physically enforced by BudgetMiddleware (not just prompt hints):
+- 500 max tool calls
+- 30 max searches
+- 25 max notifications
+- 5 max investigation depth
+- 12 minute timeout
 
 ## GitHub Actions
 

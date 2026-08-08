@@ -67,8 +67,11 @@ def build_agent():
         print("❌ Set DEEPSEEK_API_KEY or GEMINI_API_KEY in .env")
         sys.exit(1)
 
-    # Emergency budget (runaway protection only, not search limits)
-    budget = BudgetTracker(max_tool_calls=500, timeout_seconds=720)
+    # Budget — physically enforced by middleware
+    budget = BudgetTracker(
+        max_tool_calls=500, max_searches=30, max_notifications=25,
+        max_investigation_depth=5, timeout_seconds=720,
+    )
 
     agent = create_deep_agent(
         model=model,
@@ -95,27 +98,25 @@ if __name__ == "__main__":
 
     CONTEXT_MESSAGES = {
         "linkedin": (
-            "Search LinkedIn for DevOps, Cloud, SRE, and Platform Engineering jobs "
-            "matching the user's preferences. Start by getting preferences, then use "
-            "search_linkedin with the LinkedIn URL from preferences. For each promising "
-            "job, fetch details, evaluate, and notify. If you find interesting companies, "
-            "you may also use discover_company_career_page and search_ats to dig deeper. "
-            "Focus on quality over quantity. Adapt based on what you find."
+            "Your focus: find DevOps, Cloud, SRE, and Platform Engineering jobs matching "
+            "the user's preferences. LinkedIn is your primary source — the search URL is "
+            "available in the user preferences. You have search, discovery, inspection, "
+            "evaluation, and notification tools at your disposal. Use whatever combination "
+            "of tools helps you find the best matches. You decide the approach."
         ),
         "career": (
-            "Discover and search company career pages for DevOps, Cloud, SRE, and Platform "
-            "Engineering jobs. Start by getting preferences to see which companies to target. "
-            "Use discover_company_career_page for each target company, then search_ats for "
-            "those you find. You may also use search_linkedin as a supplement. For each job, "
-            "fetch details, evaluate, and notify strong matches. Investigate uncertain jobs. "
-            "Stop when you've covered enough companies or found sufficient matches."
+            "Your focus: find DevOps, Cloud, SRE, and Platform Engineering jobs from "
+            "company career pages. You have tools to discover where companies post jobs, "
+            "search their ATS platforms, and evaluate candidates. LinkedIn search is also "
+            "available as a supplement. You decide which companies to investigate, which "
+            "tools to use, and when you've found enough quality matches."
         ),
         "full": (
             "Find DevOps, Cloud, SRE, and Platform Engineering jobs matching the "
-            "user's preferences. Start by getting preferences, then search broadly "
-            "using all available tools. Evaluate promising jobs and notify the user "
-            "of strong matches. Be thorough, use multiple sources, and adapt your "
-            "strategy based on results."
+            "user's preferences across all available sources. You have a full suite "
+            "of search, discovery, inspection, evaluation, and notification tools. "
+            "Be thorough, adapt your strategy based on results, and use whatever "
+            "tool sequence delivers the best outcomes."
         ),
     }
 
