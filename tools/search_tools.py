@@ -18,6 +18,10 @@ RETRY_BACKOFF = 2.0
 
 
 def _retry_get(url: str, timeout: int = 15, extra_headers: dict | None = None) -> requests.Response:
+    from tools.url_security import validate_url
+    safe, reason = validate_url(url)
+    if not safe:
+        raise ValueError(f"URL validation failed: {reason}")
     headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}
     if extra_headers:
         headers.update(extra_headers)
@@ -87,30 +91,6 @@ def search_linkedin(url: str, max_results: int = 30) -> str:
     return json.dumps({"results": results, "error": None if results else "No job IDs found"})
 
 
-# ===========================================================================
-# Web search (broad fallback)
-# ===========================================================================
-
-class WebSearchInput(BaseModel):
-    query: str = Field(description="Search query for DevOps/Cloud/SRE jobs")
-    location: str = Field(default="India", description="Location filter")
-    max_results: int = Field(default=15, ge=1, le=50)
-
-
-@tool(args_schema=WebSearchInput)
-def search_web_jobs(query: str, location: str = "India", max_results: int = 15) -> str:
-    """
-    Search the web broadly for jobs. Use when platform-specific search tools
-    don't find enough results or when exploring new sources.
-    """
-    return json.dumps({
-        "results": [],
-        "error": "Web search not yet implemented. Use search_linkedin, search_ats, or discover_company_career_page.",
-        "hint": "Try discover_company_career_page to find company ATS pages, then search_ats."
-    })
-
-
-# ===========================================================================
 # ATS search (Greenhouse, Lever, Ashby)
 # ===========================================================================
 

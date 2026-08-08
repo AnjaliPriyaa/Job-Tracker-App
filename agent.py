@@ -11,10 +11,10 @@ Usage:
     python agent.py
 """
 
-import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -67,14 +67,8 @@ def build_agent():
         print("❌ Set DEEPSEEK_API_KEY or GEMINI_API_KEY in .env")
         sys.exit(1)
 
-    # Execution budget
-    budget = BudgetTracker(
-        max_tool_calls=80,
-        max_searches=8,
-        max_notifications=15,
-        max_investigation_depth=3,
-        timeout_seconds=600,
-    )
+    # Emergency budget (runaway protection only, not search limits)
+    budget = BudgetTracker(max_tool_calls=500, timeout_seconds=720)
 
     agent = create_deep_agent(
         model=model,
@@ -82,11 +76,12 @@ def build_agent():
         system_prompt=SYSTEM_PROMPT,
         middleware=[
             TodoListMiddleware(),
+            BudgetMiddleware(budget),
         ],
     )
 
-    logger.info("Agent built: %d tools, budget=%d calls/%d searches",
-                len(ALL_TOOLS), budget.max_tool_calls, budget.max_searches)
+    logger.info("Agent built: %d tools, emergency budget=%d calls/%ds",
+                len(ALL_TOOLS), budget.max_tool_calls, budget.timeout_seconds)
 
     return agent, budget
 
@@ -163,7 +158,7 @@ if __name__ == "__main__":
         print(f"\n❌ Agent error: {e}")
         sys.exit(1)
     finally:
-        elapsed = int(budget.start_time and (__import__("time").monotonic() - budget.start_time) or 0)
+        elapsed = int(time.monotonic() - budget.start_time)
         print(f"\n📈 Budget: {budget.tool_calls}/{budget.max_tool_calls} calls, "
               f"{budget.searches} searches, {budget.notifications} notifications, "
               f"{elapsed}s elapsed")

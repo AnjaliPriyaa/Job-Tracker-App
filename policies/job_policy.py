@@ -9,9 +9,15 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from storage import JobRepository, NotificationRepository
-from utils import load_config
+
+
+def _load_config():
+    _config_path = Path(__file__).resolve().parent.parent / "config.json"
+    with open(_config_path) as _f:
+        return json.load(_f)
 
 logger = logging.getLogger(__name__)
 
@@ -56,42 +62,71 @@ class PolicyEngine:
     max_notifications_per_day: int = 20
     min_confidence: float = 0.6
 
-    _config: dict = field(default_factory=load_config)
+    _config: dict = field(default_factory=_load_config)
 
-    def validate_notification(self, canonical_id: str, company: str, title: str) -> PolicyResult:
+    def validate_notification(self, canonical_id: str, company: str, title: str,
+                               location: str = "", description: str = "") -> PolicyResult:
         """Run all policy checks. Returns allowed + reason."""
+        db = get_db()
 
-        # 1. Rate limit
+        # 1. Job must exist in the database
+        job = db.execute("SELECT * FROM jobs WHERE canonical_id = ?", (canonical_id,)).fetchone()
+        if not job:
+            return PolicyResult(False, "Job not found in database")
+
+        # 2. Job must have been evaluated
+        decision = db.execute(
+            "SELECT * FROM decisions WHERE canonical_id = ? ORDER BY created_at DESC LIMIT 1",
+            (canonical_id,)
+        ).fetchone()
+        if not decision:
+            return PolicyResult(False, "Job has not been evaluated")
+
+        if decision["decision"] != "match":
+            return PolicyResult(False, f"Job evaluation was '{decision['decision']}', not 'match'")
+
+        # 3. Confidence threshold
+        if decision["confidence"] < self.min_confidence:
+            return PolicyResult(False, f"Confidence {decision['confidence']} below threshold {self.min_confidence}")
+
+        # 4. Rate limit
         today_count = NotificationRepository.count_today()
         if today_count >= self.max_notifications_per_day:
             return PolicyResult(False, f"Daily notification limit ({self.max_notifications_per_day}) reached")
 
-        # 2. Duplicate notification
+        # 5. Duplicate notification
         if JobRepository.is_notified(canonical_id):
             return PolicyResult(False, "Job already notified")
 
-        # 3. Target company
+        # 6. Target company
         target_companies = self._config.get("target_companies", [])
         if company and target_companies:
             if not any(tc.lower() in company.lower() or company.lower() in tc.lower()
                        for tc in target_companies):
                 return PolicyResult(False, f"Company '{company}' not in target list")
 
-        # 4. Excluded roles in title
+        # 7. Excluded roles in title
         exclude_roles = self._config.get("exclude_roles", [])
         title_lower = title.lower()
         for role in exclude_roles:
             if role.lower() in title_lower:
                 return PolicyResult(False, f"Excluded role '{role}' in title")
 
-        # 5. Excluded levels
+        # 8. Excluded levels
         exclude_levels = self._config.get("exclude_levels", [])
         for level in exclude_levels:
             if level.lower() in title_lower:
                 return PolicyResult(False, f"Excluded level '{level}' in title")
 
-        # 6. Location check (run against description in evaluate_job, not here)
-        # This is a lightweight title-only check
+        # 9. Location validation — look up from DB sources
+        sources = db.execute(
+            "SELECT location, description FROM job_sources WHERE canonical_id = ?",
+            (canonical_id,)
+        ).fetchall()
+        for src in sources:
+            loc_text = f"{src['location']} {src['description'][:500]}"
+            if loc_text.strip() and not self.is_valid_location(loc_text):
+                return PolicyResult(False, f"Location validation failed for {canonical_id}")
 
         return PolicyResult(True, "All checks passed")
 

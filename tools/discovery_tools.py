@@ -2,11 +2,12 @@
 
 import json
 import logging
-import time
 
 import requests
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
+
+from tools.url_security import validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,9 @@ def discover_company_career_page(company: str) -> str:
 
     for ats_name, pattern in ATS_PATTERNS:
         url = pattern.format(slug=slug)
+        safe, reason = validate_url(url)
+        if not safe:
+            continue
         try:
             resp = requests.get(url, headers=headers, timeout=8)
             if resp.status_code == 200 and len(resp.text) > 5000:
@@ -78,6 +82,10 @@ def discover_ats_platform(career_page_url: str) -> str:
     Identify which ATS platform a career page URL uses (Greenhouse, Lever, Ashby, etc.)
     by inspecting the page content. Useful for unknown career page URLs.
     """
+    safe, reason = validate_url(career_page_url)
+    if not safe:
+        return json.dumps({"platform": "unknown", "error": f"URL validation failed: {reason}"})
+
     headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}
     try:
         resp = requests.get(career_page_url, headers=headers, timeout=8)

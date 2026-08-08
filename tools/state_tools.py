@@ -26,8 +26,11 @@ def get_user_preferences(_: str = "") -> str:
     Get the user's job search preferences: target companies, roles, keywords,
     exclusions, experience range, and confidence threshold from config.json.
     """
-    from utils import load_config
-    config = load_config()
+    import json as _json
+    from pathlib import Path as _Path
+    _config_path = _Path(__file__).resolve().parent.parent / "config.json"
+    with open(_config_path) as _f:
+        config = _json.load(_f)
     return json.dumps({
         "target_companies": config.get("target_companies", []),
         "target_roles": config.get("roles", []),

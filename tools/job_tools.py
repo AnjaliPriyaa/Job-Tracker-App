@@ -30,6 +30,11 @@ def fetch_job(url: str, source: str = "linkedin") -> str:
     Fetch the full job description from a job posting URL. Extracts company name,
     job title, location, and description text automatically.
     """
+    from tools.url_security import validate_url
+    safe, reason = validate_url(url)
+    if not safe:
+        return json.dumps({"error": f"URL validation failed: {reason}", "company": "", "title": "", "location": "", "description": ""})
+
     headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}
     last_exc = None
     for attempt in range(RETRY_MAX + 1):
