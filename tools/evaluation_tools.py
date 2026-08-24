@@ -139,6 +139,21 @@ def evaluate_job(
                 "investigation_depth": block.get("depth", 0),
             })
 
+    # Auto-load preferences from config if agent didn't pass them
+    if not target_companies or not keywords:
+        try:
+            import json as _j
+            from pathlib import Path as _P
+            _cfg = _j.load(open(_P(__file__).resolve().parent.parent / "config.json"))
+            target_companies = target_companies or _cfg.get("target_companies", [])
+            target_roles = target_roles or _cfg.get("roles", [])
+            keywords = keywords or _cfg.get("job_portals", [{}])[0].get("keywords", [])
+            exclude_keywords = exclude_keywords or _cfg.get("exclude_keywords", [])
+            exclude_roles = exclude_roles or _cfg.get("exclude_roles", [])
+            exclude_levels = exclude_levels or _cfg.get("exclude_levels", [])
+        except Exception:
+            pass
+
     job_input = EvaluateJobInput(
         title=title, company=company, description=description, location=location,
         target_companies=target_companies or [], target_roles=target_roles or [],

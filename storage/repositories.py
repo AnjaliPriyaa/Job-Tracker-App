@@ -70,14 +70,31 @@ class JobRepository:
         return row["canonical_id"] if row else None
 
     @staticmethod
-    def is_notified(canonical_id: str) -> bool:
-        """Check if a job has already been notified."""
+    def is_notified(canonical_id: str, recency_days: int = 30) -> bool:
+        """Check if a job has been notified within the recency window.
+        Jobs notified more than recency_days ago can be reconsidered
+        (e.g., for updated/reposted listings)."""
         db = get_db()
+        cutoff = (datetime.now(timezone.utc).replace(hour=0, minute=0, second=0) -
+                  __import__('datetime').timedelta(days=recency_days)).isoformat()
         row = db.execute(
-            "SELECT COUNT(*) as cnt FROM notifications WHERE canonical_id = ? AND success = 1",
-            (canonical_id,),
+            "SELECT COUNT(*) as cnt FROM notifications WHERE canonical_id = ? AND success = 1 AND sent_at >= ?",
+            (canonical_id, cutoff),
         ).fetchone()
         return row["cnt"] > 0
+
+    @staticmethod
+    def should_reconsider(canonical_id: str, recency_days: int = 30) -> bool:
+        """Check if a seen job should be reconsidered (notified long ago)."""
+        db = get_db()
+        cutoff = (datetime.now(timezone.utc).replace(hour=0, minute=0, second=0) -
+                  __import__('datetime').timedelta(days=recency_days)).isoformat()
+        row = db.execute(
+            "SELECT last_seen FROM jobs WHERE canonical_id = ?", (canonical_id,)
+        ).fetchone()
+        if not row:
+            return True
+        return row["last_seen"] < cutoff
 
     @staticmethod
     def update_status(canonical_id: str, status: str) -> None:

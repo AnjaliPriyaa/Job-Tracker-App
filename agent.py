@@ -42,7 +42,6 @@ def build_agent():
     from tools import ALL_TOOLS
     from agent.prompts import SYSTEM_PROMPT
     from agent.middleware import BudgetMiddleware, BudgetTracker, set_budget
-    from agent.stats import RunStats
 
     # Model
     deepseek_key = os.getenv("DEEPSEEK_API_KEY")
@@ -96,6 +95,8 @@ def build_agent():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    from agent.stats import RunStats
+
     context = os.getenv("RUN_CONTEXT", "full")
 
     CONTEXT_MESSAGES = {

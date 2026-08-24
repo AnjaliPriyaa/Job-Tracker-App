@@ -106,17 +106,19 @@ class PolicyEngine:
                        for tc in target_companies):
                 return PolicyResult(False, f"Company '{company}' not in target list")
 
-        # 7. Excluded roles in title
+        # 7. Excluded roles in title (word-boundary matching)
         exclude_roles = self._config.get("exclude_roles", [])
         title_lower = title.lower()
         for role in exclude_roles:
-            if role.lower() in title_lower:
+            role_lower = role.lower().strip()
+            if re.search(rf'\b{re.escape(role_lower)}\b', title_lower):
                 return PolicyResult(False, f"Excluded role '{role}' in title")
 
-        # 8. Excluded levels
+        # 8. Excluded levels (word-boundary matching)
         exclude_levels = self._config.get("exclude_levels", [])
         for level in exclude_levels:
-            if level.lower() in title_lower:
+            level_lower = level.lower().strip()
+            if re.search(rf'\b{re.escape(level_lower)}\b', title_lower):
                 return PolicyResult(False, f"Excluded level '{level}' in title")
 
         # 9. Location validation — look up from DB sources

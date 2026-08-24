@@ -223,39 +223,50 @@ def search_ats(company: str, ats_url: str, max_results: int = 25) -> str:
     Search a company's ATS (Greenhouse, Lever, Ashby) career page for jobs.
     Requires the ATS URL from discover_company_career_page.
     """
+    # Determine ATS platform from URL
+    platform = "generic"
+    if "greenhouse" in ats_url:
+        platform = "greenhouse"
+    elif "lever.co" in ats_url:
+        platform = "lever"
+    elif "ashby" in ats_url:
+        platform = "ashby"
+
+    from tools.ats_parsers import parse_ats
+    jobs = parse_ats(ats_url, company, platform)
+
+    if jobs:
+        results = [SearchResult(
+            source=f"ats_{platform}",
+            source_job_id=j["source_job_id"],
+            url=j["url"],
+            title=j["title"],
+            company=company,
+            location=j.get("location", ""),
+        ).model_dump() for j in jobs[:max_results]]
+        return json.dumps({"results": results, "error": None})
+
+    # Fallback: generic link extraction
     try:
         resp = _retry_get(ats_url, timeout=10)
     except requests.RequestException as e:
         return json.dumps({"results": [], "error": f"ATS request failed: {e}"})
-
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(resp.text, "html.parser")
     for tag in soup.find_all(["nav", "footer", "header", "script", "style"]):
         tag.decompose()
-
     results: list[dict] = []
-    seen: set[str] = set()
-
-    for link in soup.find_all("a", href=True):
+    seen_urls: set[str] = set()
+    for link in soup.find_all("a", href=True, limit=max_results):
         href = link.get("href", "")
         title = link.get_text(strip=True)
-        if not title or len(title) < 8:
+        if not title or len(title) < 8 or href in seen_urls:
             continue
-        if href.startswith("/"):
-            base = "/".join(ats_url.split("/")[:3])
-            href = base + href
-        if href in seen:
-            continue
-        seen.add(href)
-
-        if len(results) < max_results:
-            results.append(SearchResult(
-                source="ats",
-                source_job_id=href,
-                url=href,
-                title=title,
-                company=company,
-            ).model_dump())
-
-    logger.info("ATS search (%s): %d results", company, len(results))
-    return json.dumps({"results": results, "error": None if results else f"No jobs found at {ats_url}"})
+        seen_urls.add(href)
+        if not href.startswith("http"):
+            href = "/".join(ats_url.split("/")[:3]) + href
+        results.append(SearchResult(
+            source="ats", source_job_id=href,
+            url=href, title=title, company=company,
+        ).model_dump())
+    return json.dumps({"results": results[:max_results], "error": None if results else f"No jobs at {ats_url}"})
