@@ -2,8 +2,8 @@ name: Career Pages Search
 
 # Daily at 10:00 AM IST = 4:30 AM UTC
 on:
-  # schedule:
-  #   - cron: '30 4 * * *'
+  schedule:
+    - cron: '30 4 * * *'
   workflow_dispatch:
 
 concurrency:
