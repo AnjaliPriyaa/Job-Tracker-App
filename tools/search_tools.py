@@ -10,14 +10,90 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from models.search import SearchResult
+from storage import JobRepository
 
 logger = logging.getLogger(__name__)
 
-RETRY_MAX = 2
-RETRY_BACKOFF = 2.0
+RETRY_MAX = 1
+RETRY_BACKOFF = 1.5
+MAX_RESULTS_PER_SEARCH = int(__import__("os").getenv("MAX_RESULTS_PER_SEARCH", "12"))
 
 
-def _retry_get(url: str, timeout: int = 15, extra_headers: dict | None = None) -> requests.Response:
+def _canonical_identity(result: dict) -> tuple[str, str, str]:
+    """Normalize cross-source IDs so aggregator links deduplicate early."""
+    source = str(result.get("source", "web"))
+    source_job_id = str(result.get("source_job_id", ""))
+    url = str(result.get("url", ""))
+    linkedin_match = re.search(r"linkedin\.com/jobs/view/(\d+)", url)
+    if linkedin_match:
+        canonical_source = "linkedin"
+        canonical_source_id = linkedin_match.group(1)
+    else:
+        canonical_source = source
+        canonical_source_id = source_job_id or url.split("?", 1)[0]
+    return source, source_job_id, f"{canonical_source}:{canonical_source_id}"
+
+
+def _compact_result(result: dict, canonical_id: str) -> dict:
+    keys = ("source", "source_job_id", "url", "title", "company", "location")
+    compact = {key: result[key] for key in keys if result.get(key)}
+    compact["canonical_id"] = canonical_id
+    return compact
+
+
+def _deduplicate_and_store(results: list[dict], max_results: int) -> tuple[list[dict], int]:
+    """Persist discoveries and return only candidates unseen by this database."""
+    unseen: list[dict] = []
+    duplicates = 0
+    for result in results:
+        source, source_job_id, candidate_id = _canonical_identity(result)
+        url = str(result.get("url", ""))
+        existing = (
+            JobRepository.find_by_source(source, source_job_id)
+            or JobRepository.find(candidate_id)
+            or JobRepository.find_by_url(url)
+        )
+        if not existing and result.get("company") and result.get("title"):
+            existing = JobRepository.find_by_secondary(
+                str(result.get("company", "")),
+                str(result.get("title", "")),
+                str(result.get("location", "")),
+            )
+
+        canonical_id = existing or candidate_id
+        JobRepository.upsert(
+            canonical_id,
+            str(result.get("company", "")),
+            str(result.get("title", "")),
+            str(result.get("location", "")),
+            source,
+            source_job_id,
+            url,
+            str(result.get("snippet", "")),
+        )
+        if existing:
+            duplicates += 1
+            continue
+        unseen.append(_compact_result(result, canonical_id))
+        if len(unseen) >= min(max_results, MAX_RESULTS_PER_SEARCH):
+            break
+    return unseen, duplicates
+
+
+def _search_payload(results: list[dict], max_results: int, error: str | None = None,
+                    **metadata) -> str:
+    unseen, duplicates = _deduplicate_and_store(results, max_results)
+    payload = {
+        "results": unseen,
+        "new_count": len(unseen),
+        "duplicates_filtered": duplicates,
+        "error": error if not unseen else None,
+        **metadata,
+    }
+    return json.dumps(payload, separators=(",", ":"))
+
+
+def _retry_get(url: str, timeout: int = 10, extra_headers: dict | None = None) -> requests.Response:
     from tools.url_security import validate_url
     safe, reason = validate_url(url)
     if not safe:
@@ -44,17 +120,17 @@ def _retry_get(url: str, timeout: int = 15, extra_headers: dict | None = None) -
 
 class LinkedInSearchInput(BaseModel):
     url: str = Field(description="LinkedIn search URL")
-    max_results: int = Field(default=30, ge=1, le=100)
+    max_results: int = Field(default=12, ge=1, le=25)
 
 
 @tool(args_schema=LinkedInSearchInput)
-def search_linkedin(url: str, max_results: int = 30) -> str:
+def search_linkedin(url: str, max_results: int = 12) -> str:
     """
     Search LinkedIn for jobs. Provide a LinkedIn search URL. Returns structured job results.
     Use this for broad searches like "DevOps engineer in Bengaluru".
     """
     try:
-        resp = _retry_get(url)
+        resp = _retry_get(url, timeout=10)
     except requests.RequestException as e:
         return json.dumps({"results": [], "error": f"LinkedIn request failed: {e}"})
 
@@ -87,8 +163,12 @@ def search_linkedin(url: str, max_results: int = 30) -> str:
                     url=f"https://www.linkedin.com/jobs/view/{job_id}",
                 ).model_dump())
 
-    logger.info("LinkedIn search: %d results", len(results))
-    return json.dumps({"results": results, "error": None if results else "No job IDs found"})
+    logger.info("LinkedIn search: %d raw results", len(results))
+    return _search_payload(
+        results,
+        max_results,
+        None if results else "No job IDs found",
+    )
 
 
 # ===========================================================================
@@ -98,11 +178,11 @@ def search_linkedin(url: str, max_results: int = 30) -> str:
 class WebSearchInput(BaseModel):
     query: str = Field(description="Search query for jobs, e.g. 'DevOps engineer Bengaluru'")
     location: str = Field(default="India", description="Location filter")
-    max_results: int = Field(default=15, ge=1, le=50)
+    max_results: int = Field(default=10, ge=1, le=25)
 
 
 @tool(args_schema=WebSearchInput)
-def search_web_jobs(query: str, location: str = "India", max_results: int = 15) -> str:
+def search_web_jobs(query: str, location: str = "India", max_results: int = 10) -> str:
     """
     Broad web-based job discovery. Searches multiple job aggregators,
     career platforms, and ATS sources. Use when platform-specific tools
@@ -164,46 +244,14 @@ def search_web_jobs(query: str, location: str = "India", max_results: int = 15) 
     except Exception as e:
         logger.debug("Web/Google: %s", e)
 
-    # Source 3: Try ATS career pages for company-like terms
-    for word in query.split()[:3]:
-        if len(word) < 3:
-            continue
-        try:
-            from tools.discovery_tools import _company_to_slug
-            slug = _company_to_slug(word)
-            for pattern in ["https://boards.greenhouse.io/{slug}", "https://jobs.lever.co/{slug}"]:
-                try:
-                    ats_url = pattern.format(slug=slug)
-                    resp = _retry_get(ats_url, timeout=8)
-                    from bs4 import BeautifulSoup
-                    soup = BeautifulSoup(resp.text, "html.parser")
-                    for tag in soup.find_all(["nav", "footer", "header"]):
-                        tag.decompose()
-                    for link in soup.find_all("a", href=True, limit=max_results):
-                        href = link.get("href", "")
-                        title = link.get_text(strip=True)
-                        if not title or len(title) < 8 or href in seen:
-                            continue
-                        seen.add(href)
-                        if href.startswith("/"):
-                            href = "/".join(ats_url.split("/")[:3]) + href
-                        results.append(SearchResult(
-                            source="ats", source_job_id=href,
-                            url=href, title=title, company=word.capitalize(),
-                        ).model_dump())
-                    break
-                except Exception:
-                    continue
-        except Exception as e:
-            logger.debug("Web/ATS: %s", e)
-
     logger.info("Web search '%s': %d results from %d sources",
                 query, len(results), len(set(r["source"] for r in results)))
-    return json.dumps({
-        "results": results[:max_results],
-        "sources_searched": list(set(r["source"] for r in results)),
-        "error": None if results else f"No results for '{query}'"
-    })
+    return _search_payload(
+        results,
+        max_results,
+        None if results else f"No results for '{query}'",
+        sources_searched=sorted(set(r["source"] for r in results)),
+    )
 
 
 # ===========================================================================
@@ -214,11 +262,11 @@ def search_web_jobs(query: str, location: str = "India", max_results: int = 15) 
 class ATSSearchInput(BaseModel):
     company: str = Field(description="Company name to search for")
     ats_url: str = Field(description="ATS career page URL (e.g., https://boards.greenhouse.io/airbnb)")
-    max_results: int = Field(default=25, ge=1, le=100)
+    max_results: int = Field(default=12, ge=1, le=25)
 
 
 @tool(args_schema=ATSSearchInput)
-def search_ats(company: str, ats_url: str, max_results: int = 25) -> str:
+def search_ats(company: str, ats_url: str, max_results: int = 12) -> str:
     """
     Search a company's ATS (Greenhouse, Lever, Ashby) career page for jobs.
     Requires the ATS URL from discover_company_career_page.
@@ -244,7 +292,7 @@ def search_ats(company: str, ats_url: str, max_results: int = 25) -> str:
             company=company,
             location=j.get("location", ""),
         ).model_dump() for j in jobs[:max_results]]
-        return json.dumps({"results": results, "error": None})
+        return _search_payload(results, max_results)
 
     # Fallback: generic link extraction
     try:
@@ -269,4 +317,8 @@ def search_ats(company: str, ats_url: str, max_results: int = 25) -> str:
             source="ats", source_job_id=href,
             url=href, title=title, company=company,
         ).model_dump())
-    return json.dumps({"results": results[:max_results], "error": None if results else f"No jobs at {ats_url}"})
+    return _search_payload(
+        results,
+        max_results,
+        None if results else f"No jobs at {ats_url}",
+    )

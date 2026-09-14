@@ -26,8 +26,13 @@ class JobRepository:
 
         if existing:
             db.execute(
-                "UPDATE jobs SET last_seen = ?, company_normalized = ?, title_normalized = ?, location_normalized = ? WHERE canonical_id = ?",
-                (now, company_norm, title_norm, location_norm, canonical_id),
+                """UPDATE jobs SET last_seen = ?,
+                   company_normalized = CASE WHEN ? != '' THEN ? ELSE company_normalized END,
+                   title_normalized = CASE WHEN ? != '' THEN ? ELSE title_normalized END,
+                   location_normalized = CASE WHEN ? != '' THEN ? ELSE location_normalized END
+                   WHERE canonical_id = ?""",
+                (now, company_norm, company_norm, title_norm, title_norm,
+                 location_norm, location_norm, canonical_id),
             )
             is_new = False
         else:
@@ -39,8 +44,14 @@ class JobRepository:
 
         # Upsert source
         db.execute(
-            """INSERT OR IGNORE INTO job_sources (canonical_id, source, source_job_id, url, title, company, location, description)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO job_sources (canonical_id, source, source_job_id, url, title, company, location, description)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(source, source_job_id) DO UPDATE SET
+                 url = CASE WHEN excluded.url != '' THEN excluded.url ELSE job_sources.url END,
+                 title = CASE WHEN excluded.title != '' THEN excluded.title ELSE job_sources.title END,
+                 company = CASE WHEN excluded.company != '' THEN excluded.company ELSE job_sources.company END,
+                 location = CASE WHEN excluded.location != '' THEN excluded.location ELSE job_sources.location END,
+                 description = CASE WHEN excluded.description != '' THEN excluded.description ELSE job_sources.description END""",
             (canonical_id, source, source_job_id, url, title, company, location, description),
         )
         db.commit()
@@ -66,6 +77,24 @@ class JobRepository:
         row = db.execute(
             "SELECT canonical_id FROM job_sources WHERE source = ? AND source_job_id = ?",
             (source, source_job_id),
+        ).fetchone()
+        return row["canonical_id"] if row else None
+
+    @staticmethod
+    def find(canonical_id: str) -> Optional[str]:
+        db = get_db()
+        row = db.execute(
+            "SELECT canonical_id FROM jobs WHERE canonical_id = ?", (canonical_id,)
+        ).fetchone()
+        return row["canonical_id"] if row else None
+
+    @staticmethod
+    def find_by_url(url: str) -> Optional[str]:
+        if not url:
+            return None
+        db = get_db()
+        row = db.execute(
+            "SELECT canonical_id FROM job_sources WHERE url = ? LIMIT 1", (url,)
         ).fetchone()
         return row["canonical_id"] if row else None
 
@@ -152,3 +181,36 @@ class NotificationRepository:
             (today,),
         ).fetchone()
         return row["cnt"]
+
+
+class AgentRunRepository:
+    """Persist a compact cost and limit record for each scheduled run."""
+
+    @staticmethod
+    def start(run_id: str, run_context: str, model: str) -> None:
+        db = get_db()
+        db.execute(
+            """INSERT OR REPLACE INTO agent_runs
+               (run_id, started_at, run_context, model, status)
+               VALUES (?, ?, ?, ?, 'running')""",
+            (run_id, datetime.now(timezone.utc).isoformat(), run_context, model),
+        )
+        db.commit()
+
+    @staticmethod
+    def finish(run_id: str, budget, usage: dict, status: str, error: str = "") -> None:
+        db = get_db()
+        db.execute(
+            """UPDATE agent_runs SET finished_at = ?, tool_calls = ?, searches = ?,
+               notifications_sent = ?, llm_calls = ?, evaluation_llm_calls = ?,
+               input_tokens = ?, output_tokens = ?, total_tokens = ?,
+               cached_input_tokens = ?, status = ?, error = ? WHERE run_id = ?""",
+            (
+                datetime.now(timezone.utc).isoformat(), budget.tool_calls,
+                budget.searches, budget.notifications, usage.get("llm_calls", 0),
+                usage.get("evaluation_llm_calls", 0), usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0), usage.get("total_tokens", 0),
+                usage.get("cached_input_tokens", 0), status, error[:500], run_id,
+            ),
+        )
+        db.commit()

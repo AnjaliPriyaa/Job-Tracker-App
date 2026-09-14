@@ -28,7 +28,7 @@ def parse_greenhouse(url: str, company: str) -> list[dict]:
     """
     jobs = []
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp = requests.get(url, headers=HEADERS, timeout=8)
         resp.raise_for_status()
     except requests.RequestException:
         return jobs
@@ -83,7 +83,7 @@ def parse_lever(url: str, company: str) -> list[dict]:
     """
     jobs = []
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp = requests.get(url, headers=HEADERS, timeout=8)
         resp.raise_for_status()
     except requests.RequestException:
         return jobs
@@ -151,7 +151,7 @@ def parse_ashby(url: str, company: str) -> list[dict]:
     """
     jobs = []
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
+        resp = requests.get(url, headers=HEADERS, timeout=8)
         resp.raise_for_status()
     except requests.RequestException:
         return jobs

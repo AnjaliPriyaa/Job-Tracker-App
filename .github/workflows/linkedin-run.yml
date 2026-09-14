@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 */2 * * *'
   workflow_dispatch:
+    inputs:
+      max_notifications:
+        description: Maximum Telegram notifications for this manual run
+        required: false
+        default: '1'
 
 concurrency:
   group: job-tracker-db
@@ -32,6 +37,7 @@ jobs:
       run: python agent.py
       env:
         RUN_CONTEXT: linkedin
+        MAX_NOTIFICATIONS: ${{ inputs.max_notifications || '8' }}
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

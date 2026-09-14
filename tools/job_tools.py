@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-RETRY_MAX = 2
+RETRY_MAX = 1
 
 
 # ===========================================================================
@@ -39,7 +39,7 @@ def fetch_job(url: str, source: str = "linkedin") -> str:
     last_exc = None
     for attempt in range(RETRY_MAX + 1):
         try:
-            resp = requests.get(url, headers=headers, timeout=15)
+            resp = requests.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
             break
         except requests.RequestException as exc:
@@ -78,16 +78,20 @@ def fetch_job(url: str, source: str = "linkedin") -> str:
     for cls in ["show-more-less-html__markup", "jobs-description__content", "description__text"]:
         el = soup.find("div", class_=cls)
         if el:
-            description = el.get_text(separator="\n", strip=True)[:4000]
+            description = el.get_text(separator=" ", strip=True)
             break
 
     if not description:
         art = soup.find("article")
         if art:
-            description = art.get_text(separator="\n", strip=True)[:4000]
+            description = art.get_text(separator=" ", strip=True)
 
     if not description:
-        description = soup.get_text()[:4000]
+        description = soup.get_text(separator=" ", strip=True)
+
+    # Large raw HTML-derived payloads are repeated in later tool arguments and
+    # dominate the outer agent context. Keep a normalized, useful excerpt.
+    description = re.sub(r"\s+", " ", description).strip()[:2400]
 
     return json.dumps({
         "company": company,

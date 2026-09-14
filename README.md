@@ -11,16 +11,16 @@ The **LLM agent decides what to do** — there is no hard-coded workflow. The ag
 - Decides when enough jobs have been found
 - Adapts its strategy dynamically
 
-The system provides **tools** (search, discover, fetch, evaluate, notify) and the agent uses them autonomously. Deterministic logic is limited to **policy enforcement** (security, rate limiting, dedup) — never workflow orchestration.
+The system provides **tools** (search, discover, fetch, evaluate, notify) and the agent uses them autonomously. Deterministic logic handles **policy enforcement and obvious job decisions** (security, rate limiting, dedup, hard exclusions, clear matches); it does not orchestrate the workflow.
 
 ## Architecture
 
 ```
-agent.py (DeepAgents)
+agent.py (bounded LangChain agent loop)
   ├── tools/search_tools.py      — search_linkedin, search_ats, search_web_jobs
   ├── tools/discovery_tools.py   — discover_company_career_page, discover_ats_platform
   ├── tools/job_tools.py         — fetch_job, extract_job_details
-  ├── tools/evaluation_tools.py  — evaluate_job (AI matching)
+  ├── tools/evaluation_tools.py  — deterministic-first evaluation, AI fallback
   ├── tools/state_tools.py       — save_job, get_seen_jobs, get_user_preferences
   ├── tools/notification_tools.py — notify_user (→ PolicyEngine → Telegram)
   │
@@ -33,12 +33,12 @@ agent.py (DeepAgents)
 ## How It Works
 
 1. **Agent gets preferences** via `get_user_preferences`
-2. **Agent searches** — chooses LinkedIn, ATS pages, or web search
-3. **Agent inspects** promising jobs with `fetch_job`
-4. **Agent evaluates** using `evaluate_job` (match / reject / investigate)
-5. **Agent investigates** uncertain jobs — deeper lookup, skill extraction
+2. **Agent searches** — chooses LinkedIn, ATS pages, or web search; results are persisted and deduplicated before entering the agent context
+3. **Agent inspects** promising new jobs with `fetch_job`
+4. **Agent evaluates** locally first; only ambiguous jobs use an additional LLM call
+5. **Agent investigates** uncertain jobs within a strict per-job depth limit
 6. **Agent notifies** via `notify_user` — PolicyEngine validates before Telegram
-7. **Agent stops** when it has sufficient matches or budget is exhausted
+7. **Agent stops** when it has sufficient matches or an enforced tool/model budget is exhausted
 
 ## Quick Setup
 
@@ -65,6 +65,11 @@ Edit `config.json`:
 | `DEEPSEEK_API_KEY` | DeepSeek API key (free tier) |
 | `TELEGRAM_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Your chat ID |
+| `MAX_MODEL_CALLS` | Outer agent turns per run (default `14`) |
+| `MAX_LLM_EVALUATIONS` | Ambiguous-job LLM evaluations per run (default `6`) |
+| `MAX_TOOL_CALLS` | All tool calls per run (default `48`) |
+| `MAX_SEARCHES` | Search/discovery calls per run (default `12`) |
+| `MAX_RESULTS_PER_SEARCH` | New results returned into context (default `12`) |
 
 ## Policy Layer (Deterministic)
 
@@ -77,12 +82,18 @@ The `PolicyEngine` enforces rules that the AI cannot bypass:
 
 ## Execution Budgets
 
-Physically enforced by BudgetMiddleware (not just prompt hints):
-- 1000 max tool calls
-- 200 max searches
-- 50 max notifications
-- 10 max investigation depth
-- 12 minute timeout
+Physically enforced by middleware (not just prompt hints):
+- 14 outer model calls
+- 6 nested AI evaluations; later ambiguous jobs use the local fallback
+- 48 total tool calls
+- 12 search/discovery calls
+- 8 notifications
+- 2 evaluations per canonical job
+- 5 minute timeout
+
+Older tool inputs and results are cleared from the model view once the transcript
+reaches roughly 10,000 tokens. Every run logs and persists model-call counts plus
+input, output, total, and cached-input tokens in the `agent_runs` table.
 
 ## GitHub Actions
 

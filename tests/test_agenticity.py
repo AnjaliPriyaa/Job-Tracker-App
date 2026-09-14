@@ -39,7 +39,7 @@ def test_no_hardcoded_workflow_in_agent_py():
 
 
 def test_agent_py_does_not_call_tools_directly():
-    """agent.py must not call tools directly — the LLM decides via create_deep_agent."""
+    """agent.py must not call tools directly — the LangChain agent decides."""
     agent_path = Path(__file__).resolve().parent.parent / "agent.py"
     source = agent_path.read_text()
     tree = ast.parse(source)

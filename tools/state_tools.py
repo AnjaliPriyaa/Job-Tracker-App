@@ -95,9 +95,9 @@ def get_seen_jobs(status: str = "") -> str:
     """
     db = get_db()
     if status:
-        rows = db.execute("SELECT canonical_id, company_normalized, title_normalized, status FROM jobs WHERE status = ? LIMIT 50", (status,)).fetchall()
+        rows = db.execute("SELECT canonical_id, company_normalized, title_normalized, status FROM jobs WHERE status = ? ORDER BY last_seen DESC LIMIT 20", (status,)).fetchall()
     else:
-        rows = db.execute("SELECT canonical_id, company_normalized, title_normalized, status FROM jobs LIMIT 50").fetchall()
+        rows = db.execute("SELECT canonical_id, company_normalized, title_normalized, status FROM jobs ORDER BY last_seen DESC LIMIT 20").fetchall()
     return json.dumps([dict(r) for r in rows])
 
 
@@ -116,7 +116,12 @@ def get_job_history(canonical_id: str) -> str:
     """
     db = get_db()
     job = db.execute("SELECT * FROM jobs WHERE canonical_id = ?", (canonical_id,)).fetchone()
-    sources = db.execute("SELECT * FROM job_sources WHERE canonical_id = ?", (canonical_id,)).fetchall()
+    sources = db.execute(
+        """SELECT source, source_job_id, url, title, company, location,
+           substr(description, 1, 500) AS description_preview
+           FROM job_sources WHERE canonical_id = ?""",
+        (canonical_id,),
+    ).fetchall()
     decisions = db.execute("SELECT * FROM decisions WHERE canonical_id = ?", (canonical_id,)).fetchall()
     notifications = db.execute("SELECT * FROM notifications WHERE canonical_id = ?", (canonical_id,)).fetchall()
 

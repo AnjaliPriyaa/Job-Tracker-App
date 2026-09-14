@@ -1,6 +1,6 @@
 """
 Execution budget middleware — physically enforces limits to prevent
-runaway agents. Subclasses AgentMiddleware for proper DeepAgents integration.
+runaway agent and tool loops.
 """
 
 import json
@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain_core.messages import ToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -30,23 +31,27 @@ def set_budget(budget):
 class BudgetTracker:
     """Tracks execution budget — physically enforced limits."""
 
-    def __init__(self, max_tool_calls: int = 1000, max_searches: int = 200,
-                 max_notifications: int = 50, max_investigation_depth: int = 10,
-                 timeout_seconds: int = 720):
+    def __init__(self, max_tool_calls: int = 48, max_searches: int = 12,
+                 max_notifications: int = 8, max_investigation_depth: int = 2,
+                 max_llm_evaluations: int = 6, timeout_seconds: int = 300):
         self.max_tool_calls = max_tool_calls
         self.max_searches = max_searches
         self.max_notifications = max_notifications
         self.max_investigation_depth = max_investigation_depth
+        self.max_llm_evaluations = max_llm_evaluations
         self.timeout_seconds = timeout_seconds
         self.start_time = time.monotonic()
         self.tool_calls = 0
         self.searches = 0
         self.notifications = 0
+        self.llm_evaluations = 0
+        self.tool_call_counts: dict[str, int] = {}
         self.investigation_depth: dict[str, int] = {}
 
     def check_tool_call(self, tool_name: str) -> dict | None:
         """Check if a tool call is allowed. Returns None if allowed, error dict if blocked."""
         self.tool_calls += 1
+        self.tool_call_counts[tool_name] = self.tool_call_counts.get(tool_name, 0) + 1
 
         if tool_name in ("search_linkedin", "search_web_jobs", "search_ats",
                          "discover_company_career_page", "discover_ats_platform"):
@@ -84,6 +89,16 @@ class BudgetTracker:
 
         return None
 
+    def check_llm_evaluation(self) -> dict | None:
+        """Reserve one nested LLM evaluation, falling back locally when exhausted."""
+        self.llm_evaluations += 1
+        if self.llm_evaluations > self.max_llm_evaluations:
+            return {
+                "blocked": True,
+                "reason": f"LLM evaluation budget reached ({self.max_llm_evaluations}).",
+            }
+        return None
+
     def check_investigation(self, canonical_id: str) -> dict | None:
         """Check if investigation depth is exceeded for a specific job."""
         depth = self.investigation_depth.get(canonical_id, 0) + 1
@@ -100,7 +115,6 @@ class BudgetTracker:
 class BudgetMiddleware(AgentMiddleware):
     """
     Middleware that wraps tool calls with emergency budget enforcement.
-    Inherits from AgentMiddleware for proper DeepAgents integration.
 
     Enforces: max tool calls, max searches, max notifications, timeout.
     Investigation depth is enforced by evaluate_job tool via get_budget().
@@ -116,9 +130,18 @@ class BudgetMiddleware(AgentMiddleware):
         handler: Any,
     ) -> Any:
         """Intercept tool calls and enforce budget limits."""
-        tool_name = getattr(request, "name", "unknown") if hasattr(request, "name") else str(request)
+        tool_call = getattr(request, "tool_call", None)
+        if isinstance(tool_call, dict):
+            tool_name = tool_call.get("name", "unknown")
+        else:
+            tool_name = getattr(request, "name", "unknown")
         block = self.budget.check_tool_call(tool_name)
         if block:
             logger.info("BudgetMiddleware BLOCK: %s — %s", tool_name, block["reason"])
-            return json.dumps(block)
+            return ToolMessage(
+                content=json.dumps(block),
+                tool_call_id=(tool_call or {}).get("id", "budget-block"),
+                name=tool_name,
+                status="error",
+            )
         return handler(request)

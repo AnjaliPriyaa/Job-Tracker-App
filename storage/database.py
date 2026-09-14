@@ -73,6 +73,15 @@ def init_db() -> None:
             tool_calls INTEGER NOT NULL DEFAULT 0,
             searches INTEGER NOT NULL DEFAULT 0,
             notifications_sent INTEGER NOT NULL DEFAULT 0,
+            llm_calls INTEGER NOT NULL DEFAULT 0,
+            evaluation_llm_calls INTEGER NOT NULL DEFAULT 0,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+            run_context TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            error TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'running'
         );
 
@@ -82,4 +91,21 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_sources_dedup ON job_sources(source, source_job_id);
         CREATE INDEX IF NOT EXISTS idx_notifications_job ON notifications(canonical_id);
     """)
+    existing_columns = {
+        row["name"] for row in db.execute("PRAGMA table_info(agent_runs)").fetchall()
+    }
+    migrations = {
+        "llm_calls": "INTEGER NOT NULL DEFAULT 0",
+        "evaluation_llm_calls": "INTEGER NOT NULL DEFAULT 0",
+        "input_tokens": "INTEGER NOT NULL DEFAULT 0",
+        "output_tokens": "INTEGER NOT NULL DEFAULT 0",
+        "total_tokens": "INTEGER NOT NULL DEFAULT 0",
+        "cached_input_tokens": "INTEGER NOT NULL DEFAULT 0",
+        "run_context": "TEXT NOT NULL DEFAULT ''",
+        "model": "TEXT NOT NULL DEFAULT ''",
+        "error": "TEXT NOT NULL DEFAULT ''",
+    }
+    for column, definition in migrations.items():
+        if column not in existing_columns:
+            db.execute(f"ALTER TABLE agent_runs ADD COLUMN {column} {definition}")
     db.commit()

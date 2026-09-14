@@ -2,6 +2,7 @@
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from langchain_core.tools import tool
@@ -41,24 +42,35 @@ def discover_company_career_page(company: str) -> str:
     slug = _company_to_slug(company)
     headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}
 
-    for ats_name, pattern in ATS_PATTERNS:
+    def probe(candidate):
+        ats_name, pattern = candidate
         url = pattern.format(slug=slug)
         safe, reason = validate_url(url)
         if not safe:
-            continue
+            return None
         try:
-            resp = requests.get(url, headers=headers, timeout=8)
+            resp = requests.get(url, headers=headers, timeout=6)
             if resp.status_code == 200 and len(resp.text) > 5000:
-                logger.info("Discovered %s career page: %s → %s", company, ats_name, url)
-                return json.dumps({
-                    "found": True,
-                    "company": company,
-                    "platform": ats_name,
-                    "career_page_url": url,
-                    "error": None,
-                })
+                return ats_name, url
         except requests.RequestException:
-            continue
+            pass
+        return None
+
+    # The three ATS probes are independent. Running them together changes no
+    # decision logic and caps discovery latency at one timeout instead of three.
+    with ThreadPoolExecutor(max_workers=len(ATS_PATTERNS)) as executor:
+        probes = list(executor.map(probe, ATS_PATTERNS))
+    for discovered in probes:
+        if discovered:
+            ats_name, url = discovered
+            logger.info("Discovered %s career page: %s -> %s", company, ats_name, url)
+            return json.dumps({
+                "found": True,
+                "company": company,
+                "platform": ats_name,
+                "career_page_url": url,
+                "error": None,
+            })
 
     return json.dumps({
         "found": False,
@@ -88,7 +100,7 @@ def discover_ats_platform(career_page_url: str) -> str:
 
     headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}
     try:
-        resp = requests.get(career_page_url, headers=headers, timeout=8)
+        resp = requests.get(career_page_url, headers=headers, timeout=6)
         resp.raise_for_status()
     except requests.RequestException as e:
         return json.dumps({"platform": "unknown", "error": str(e)})
