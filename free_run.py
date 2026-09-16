@@ -60,8 +60,10 @@ def _pending(context: str, limit: int) -> list[dict]:
         """SELECT s.canonical_id, s.source, s.source_job_id, s.url,
                   s.title, s.company, s.location
            FROM job_sources AS s JOIN jobs AS j USING (canonical_id)
-           WHERE j.status IN ('discovered', 'investigating') AND s.source LIKE ?
-           ORDER BY j.last_seen DESC LIMIT ?""",
+           WHERE j.status IN ('discovered', 'investigating', 'match')
+             AND s.source LIKE ?
+           ORDER BY CASE WHEN j.status = 'match' THEN 0 ELSE 1 END,
+                    j.last_seen DESC LIMIT ?""",
         (source_filter, limit),
     ).fetchall()
     return [dict(row) for row in rows]

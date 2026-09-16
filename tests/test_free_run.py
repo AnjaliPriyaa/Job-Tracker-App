@@ -9,6 +9,25 @@ def test_career_company_rotation_is_bounded():
     assert _career_companies(config, 2, day=3) == ["E", "A"]
 
 
+def test_pending_retries_matched_jobs_after_notification_was_blocked(monkeypatch):
+    import free_run
+
+    class FakeDb:
+        def execute(self, query, params):
+            assert "'match'" in query
+            assert "CASE WHEN j.status = 'match' THEN 0" in query
+            assert params == ("linkedin", 12)
+            return self
+
+        def fetchall(self):
+            return [{"canonical_id": "linkedin:4463332504", "source": "linkedin",
+                     "source_job_id": "4463332504", "url": "https://www.linkedin.com/jobs/view/4463332504",
+                     "title": "Senior SRE", "company": "Visa", "location": "Bengaluru"}]
+
+    monkeypatch.setattr(free_run, "get_db", lambda: FakeDb())
+    assert free_run._pending("linkedin", 12)[0]["canonical_id"] == "linkedin:4463332504"
+
+
 def test_key_free_run_notifies_only_after_match(monkeypatch):
     import free_run
     from agent.middleware import BudgetTracker
