@@ -284,6 +284,20 @@ def search_ats(company: str, ats_url: str, max_results: int = 12) -> str:
     jobs = parse_ats(ats_url, company, platform)
 
     if jobs:
+        # Large career boards often list unrelated/global openings first. Put
+        # relevant India roles ahead of them before applying the result cap.
+        role_terms = ("devops", "devsecops", "site reliability", "sre", "platform",
+                      "cloud", "infrastructure")
+        location_terms = ("bengaluru", "bangalore", "hyderabad", "india")
+        excluded_terms = ("staff", "principal", "manager", "director", "lead",
+                          "architect", "intern", "junior")
+        jobs.sort(key=lambda job: (
+            any(term in job.get("title", "").lower() for term in role_terms)
+            and not any(term in job.get("title", "").lower() for term in excluded_terms)
+            and any(term in job.get("location", "").lower() for term in location_terms),
+            any(term in job.get("title", "").lower() for term in role_terms)
+            and not any(term in job.get("title", "").lower() for term in excluded_terms),
+        ), reverse=True)
         results = [SearchResult(
             source=f"ats_{platform}",
             source_job_id=j["source_job_id"],
@@ -291,6 +305,7 @@ def search_ats(company: str, ats_url: str, max_results: int = 12) -> str:
             title=j["title"],
             company=company,
             location=j.get("location", ""),
+            snippet=j.get("description", ""),
         ).model_dump() for j in jobs[:max_results]]
         return _search_payload(results, max_results)
 

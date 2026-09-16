@@ -107,10 +107,14 @@ Two independent schedules invoke the **same `agent.py`** with different run cont
 | `career-run.yml` | Daily 10 AM IST (4:30 UTC) | Career page discovery + ATS search |
 
 Both share the same SQLite state, tools, policies, and budget infrastructure.
-They currently use Gemini 2.5 Flash with DeepSeek commented out in the workflow
-files. Gemini has a free tier, subject to your account's rate limits. The
-workflows check out the latest `main` when they start, so a queued run does not
-try to push database changes from an outdated commit.
+The scheduled workflows temporarily run `free_run.py`, which uses the existing
+search, evaluation, deduplication, policy, and Telegram tools without any model
+API key or model tokens. Both Gemini and DeepSeek are commented out in the
+workflow files because the saved Gemini key is invalid and the DeepSeek account
+has insufficient balance. `agent.py` remains available for agentic runs once a
+working model key is configured. The workflows check out the latest `main`
+when they start, so a queued run does not try to push database changes from an
+outdated commit.
 
 ```yaml
 # linkedin-run.yml

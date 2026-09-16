@@ -35,14 +35,13 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Run agent (LinkedIn context)
-      run: python agent.py
+    - name: Run key-free search (LinkedIn context)
+      run: python free_run.py
       env:
         RUN_CONTEXT: linkedin
         MAX_NOTIFICATIONS: ${{ inputs.max_notifications || '8' }}
-        AI_PROVIDER: gemini
-        GEMINI_MODEL: gemini-2.5-flash
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        AI_PROVIDER: rules
+        # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         # DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

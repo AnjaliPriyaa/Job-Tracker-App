@@ -9,6 +9,7 @@ import json
 import logging
 import re
 from urllib.parse import urljoin
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -27,6 +28,35 @@ def parse_greenhouse(url: str, company: str) -> list[dict]:
     - <span class="location"> with location text
     """
     jobs = []
+    slug = urlparse(url).path.strip("/").split("/")[0]
+    if slug:
+        try:
+            response = requests.get(
+                f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true",
+                headers=HEADERS, timeout=8,
+            )
+            response.raise_for_status()
+            for posting in response.json().get("jobs", []):
+                location = posting.get("location") or {}
+                location_name = location.get("name", "") if isinstance(location, dict) else str(location)
+                description = BeautifulSoup(posting.get("content") or "", "html.parser").get_text(
+                    separator=" ", strip=True
+                )[:2400]
+                if posting.get("title") and posting.get("absolute_url"):
+                    jobs.append({
+                        "source": "greenhouse",
+                        "source_job_id": f"greenhouse_{posting['id']}",
+                        "url": posting["absolute_url"],
+                        "title": posting["title"],
+                        "company": company,
+                        "location": location_name,
+                        "description": description,
+                    })
+            logger.info("Greenhouse API (%s): %d jobs", company, len(jobs))
+            return jobs
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            logger.debug("Greenhouse API failed for %s: %s", company, exc)
+
     try:
         resp = requests.get(url, headers=HEADERS, timeout=8)
         resp.raise_for_status()
@@ -150,6 +180,33 @@ def parse_ashby(url: str, company: str) -> list[dict]:
     The HTML page also contains an embedded script with job data.
     """
     jobs = []
+    slug = urlparse(url).path.strip("/").split("/")[0]
+    if slug:
+        try:
+            response = requests.get(
+                f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+                headers=HEADERS, timeout=8,
+            )
+            response.raise_for_status()
+            for posting in response.json().get("jobs", []):
+                if posting.get("isListed") is False:
+                    continue
+                job_url = posting.get("jobUrl") or posting.get("applyUrl")
+                if posting.get("title") and job_url:
+                    jobs.append({
+                        "source": "ashby",
+                        "source_job_id": f"ashby_{posting['id']}",
+                        "url": job_url,
+                        "title": posting["title"],
+                        "company": company,
+                        "location": posting.get("location") or "",
+                        "description": (posting.get("descriptionPlain") or "")[:2400],
+                    })
+            logger.info("Ashby API (%s): %d jobs", company, len(jobs))
+            return jobs
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            logger.debug("Ashby API failed for %s: %s", company, exc)
+
     try:
         resp = requests.get(url, headers=HEADERS, timeout=8)
         resp.raise_for_status()

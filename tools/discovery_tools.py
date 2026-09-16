@@ -48,11 +48,22 @@ def discover_company_career_page(company: str) -> str:
         safe, reason = validate_url(url)
         if not safe:
             return None
+        probe_url = {
+            "greenhouse": f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+            "lever": f"https://api.lever.co/v0/postings/{slug}?mode=json",
+            "ashby": f"https://api.ashbyhq.com/posting-api/job-board/{slug}",
+        }[ats_name]
+        safe, reason = validate_url(probe_url)
+        if not safe:
+            return None
         try:
-            resp = requests.get(url, headers=headers, timeout=6)
-            if resp.status_code == 200 and len(resp.text) > 5000:
-                return ats_name, url
-        except requests.RequestException:
+            resp = requests.get(probe_url, headers=headers, timeout=6)
+            if resp.status_code == 200:
+                data = resp.json()
+                listings = data if isinstance(data, list) else data.get("jobs")
+                if isinstance(listings, list):
+                    return ats_name, url
+        except (requests.RequestException, ValueError):
             pass
         return None
 
