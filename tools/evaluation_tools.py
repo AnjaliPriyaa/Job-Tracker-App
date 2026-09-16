@@ -75,13 +75,9 @@ def _contains_phrase(text: str, phrase: str) -> bool:
 
 
 def _company_allowed(company: str, targets: list[str]) -> bool:
-    company_norm = " ".join(company.lower().replace(",", " ").split())
-    return any(
-        company_norm == " ".join(target.lower().replace(",", " ").split())
-        or company_norm in target.lower()
-        or target.lower() in company_norm
-        for target in targets
-    )
+    from policies.job_policy import is_target_company
+
+    return is_target_company(company, targets)
 
 
 def _required_experience(text: str) -> int | None:

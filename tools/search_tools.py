@@ -134,27 +134,35 @@ def search_linkedin(url: str, max_results: int = 12) -> str:
     except requests.RequestException as e:
         return json.dumps({"results": [], "error": f"LinkedIn request failed: {e}"})
 
+    from pathlib import Path
+    from bs4 import BeautifulSoup
+    from policies.job_policy import is_target_company
+
     raw_html = resp.text
     results: list[dict] = []
     seen: set[str] = set()
-
-    for match in re.finditer(r"urn:li:jobPosting:(\d{7,15})", raw_html):
-        job_id = match.group(1)
-        if job_id not in seen and len(results) < max_results:
-            seen.add(job_id)
-            results.append(SearchResult(
-                source="linkedin",
-                source_job_id=job_id,
-                url=f"https://www.linkedin.com/jobs/view/{job_id}",
-                title="",
-                company="",
-                location="",
-            ).model_dump())
+    soup = BeautifulSoup(raw_html, "html.parser")
+    for card in soup.find_all(attrs={"data-entity-urn": re.compile(r"urn:li:jobPosting:\d+")}):
+        job_id = card.get("data-entity-urn", "").rsplit(":", 1)[-1]
+        if job_id in seen or not job_id.isdigit():
+            continue
+        seen.add(job_id)
+        title_tag = card.find("h3", class_="base-search-card__title")
+        company_tag = card.find("h4", class_="base-search-card__subtitle")
+        location_tag = card.find("span", class_="job-search-card__location")
+        results.append(SearchResult(
+            source="linkedin",
+            source_job_id=job_id,
+            url=f"https://www.linkedin.com/jobs/view/{job_id}",
+            title=title_tag.get_text(" ", strip=True) if title_tag else "",
+            company=company_tag.get_text(" ", strip=True) if company_tag else "",
+            location=location_tag.get_text(" ", strip=True) if location_tag else "",
+        ).model_dump())
 
     if not results:
-        # Fallback: /jobs/view/ links
-        for match in re.finditer(r"/jobs/view/(\d{7,15})", raw_html):
-            job_id = match.group(1)
+        # Fallback for a LinkedIn layout without structured search cards.
+        for match in re.finditer(r"urn:li:jobPosting:(\d{7,15})|/jobs/view/(\d{7,15})", raw_html):
+            job_id = match.group(1) or match.group(2)
             if job_id not in seen and len(results) < max_results:
                 seen.add(job_id)
                 results.append(SearchResult(
@@ -163,9 +171,27 @@ def search_linkedin(url: str, max_results: int = 12) -> str:
                     url=f"https://www.linkedin.com/jobs/view/{job_id}",
                 ).model_dump())
 
+    if results:
+        with open(Path(__file__).resolve().parent.parent / "config.json") as config_file:
+            targets = json.load(config_file).get("target_companies", [])
+        role_pattern = re.compile(
+            r"\b(?:devops|devsecops|sre)\b|"
+            r"\b(?:site reliability|platform|cloud|infrastructure)\s+engineer\b|"
+            r"\bsoftware engineer\s*[,–-]\s*(?:infrastructure|cloud|platform)\b",
+            re.IGNORECASE,
+        )
+        excluded = re.compile(r"\b(?:staff|principal|manager|director|lead|architect|intern|junior)\b", re.I)
+        results.sort(key=lambda result: (
+            bool(result.get("company") and is_target_company(result["company"], targets))
+            and bool(role_pattern.search(result.get("title", "")))
+            and not bool(excluded.search(result.get("title", ""))),
+            bool(result.get("company") and is_target_company(result["company"], targets)),
+            bool(role_pattern.search(result.get("title", ""))),
+        ), reverse=True)
+
     logger.info("LinkedIn search: %d raw results", len(results))
     return _search_payload(
-        results,
+        results[:max_results],
         max_results,
         None if results else "No job IDs found",
     )

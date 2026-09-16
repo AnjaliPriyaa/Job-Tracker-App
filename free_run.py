@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from agent.middleware import BudgetTracker, set_budget
+from policies.job_policy import is_target_company
 from storage import AgentRunRepository, JobRepository
 from tools.discovery_tools import discover_company_career_page
 from tools.evaluation_tools import evaluate_job
@@ -28,7 +29,8 @@ logger = logging.getLogger("free_run")
 
 TARGET_TITLE = re.compile(
     r"\b(?:devops|devsecops|sre)\b|"
-    r"\b(?:site reliability|platform|cloud|infrastructure|cloud security)\s+engineer\b",
+    r"\b(?:site reliability|platform|cloud|infrastructure|cloud security)\s+engineer\b|"
+    r"\bsoftware engineer\s*[,–-]\s*(?:infrastructure|cloud|platform)\b",
     re.IGNORECASE,
 )
 
@@ -121,12 +123,16 @@ def _discover(context: str, config: dict, budget: BudgetTracker,
     return candidates[:max_candidates]
 
 
-def _process(candidate: dict, budget: BudgetTracker) -> bool:
+def _process(candidate: dict, budget: BudgetTracker,
+             target_companies: list[str] | None = None) -> bool:
     canonical_id = candidate.get("canonical_id", "")
     url = candidate.get("url", "")
     if not canonical_id or not url or JobRepository.is_notified(canonical_id):
         return False
     title_hint = candidate.get("title", "")
+    company_hint = candidate.get("company", "")
+    if target_companies and company_hint and not is_target_company(company_hint, target_companies):
+        return False
     if title_hint and not TARGET_TITLE.search(title_hint):
         return False
 
@@ -206,7 +212,7 @@ def main() -> None:
             if time.monotonic() - budget.start_time > budget.timeout_seconds:
                 logger.warning("Run time budget reached")
                 break
-            sent += _process(candidate, budget)
+            sent += _process(candidate, budget, config.get("target_companies", []))
             if sent >= budget.max_notifications:
                 break
     except Exception as exc:

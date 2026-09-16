@@ -22,6 +22,21 @@ def _load_config():
 
 logger = logging.getLogger(__name__)
 
+
+def is_target_company(company: str, targets: list[str]) -> bool:
+    """Match whole company names, not substrings (Arm must not match HARMAN)."""
+    def normalize(value: str) -> str:
+        words = re.findall(r"[a-z0-9]+", value.lower())
+        while words and words[-1] in {"inc", "corp", "corporation", "ltd", "limited", "llc"}:
+            words.pop()
+        return " ".join(words)
+
+    actual = normalize(company)
+    return bool(actual) and any(
+        actual == target or actual.startswith(target + " ") or target.startswith(actual + " ")
+        for target in (normalize(item) for item in targets) if target
+    )
+
 # Non-India location patterns (moved from old utils.is_valid_location)
 _REJECT_LOCATIONS = [
     r'\b(?:London|Manchester|Birmingham|Edinburgh|Glasgow|Bristol|Leeds)\b',
@@ -102,8 +117,7 @@ class PolicyEngine:
         # 6. Target company
         target_companies = self._config.get("target_companies", [])
         if company and target_companies:
-            if not any(tc.lower() in company.lower() or company.lower() in tc.lower()
-                       for tc in target_companies):
+            if not is_target_company(company, target_companies):
                 return PolicyResult(False, f"Company '{company}' not in target list")
 
         # 7. Excluded roles in title (word-boundary matching)

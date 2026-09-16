@@ -191,3 +191,11 @@ def test_location_accept():
     assert engine.is_valid_location("Job in Bengaluru, Karnataka")
     assert engine.is_valid_location("Hyderabad based role")
     assert engine.is_valid_location("Remote position")
+
+
+def test_company_match_uses_name_boundaries():
+    from policies.job_policy import is_target_company
+
+    assert is_target_company("Google India", ["Google"])
+    assert is_target_company("Docker", ["Docker, Inc"])
+    assert not is_target_company("HARMAN India", ["Arm"])

@@ -53,3 +53,29 @@ def test_key_free_run_skips_unrelated_titles_before_fetch(monkeypatch):
         "canonical_id": "ats:1", "url": "https://example.com/job/1",
         "title": "Marketing Manager", "company": "Google",
     }, BudgetTracker()) is False
+
+
+def test_linkedin_search_prefers_target_company_cards(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from tools import search_tools
+
+    html = """
+    <div data-entity-urn="urn:li:jobPosting:123456789">
+      <h3 class="base-search-card__title">Cloud Engineer</h3>
+      <h4 class="base-search-card__subtitle">Other Company</h4>
+      <span class="job-search-card__location">Bengaluru, India</span>
+    </div>
+    <div data-entity-urn="urn:li:jobPosting:987654321">
+      <h3 class="base-search-card__title">Senior SRE</h3>
+      <h4 class="base-search-card__subtitle">Visa</h4>
+      <span class="job-search-card__location">Bengaluru, India</span>
+    </div>
+    """
+    monkeypatch.setattr(search_tools, "_retry_get", lambda *args, **kwargs: SimpleNamespace(text=html))
+    monkeypatch.setattr(search_tools, "_search_payload", lambda results, *_args, **_kwargs: json.dumps(results))
+    results = json.loads(search_tools.search_linkedin.invoke({
+        "url": "https://www.linkedin.com/jobs/search/", "max_results": 1,
+    }))
+    assert results[0]["company"] == "Visa"
+    assert results[0]["title"] == "Senior SRE"
