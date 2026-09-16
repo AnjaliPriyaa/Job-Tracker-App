@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+from pathlib import Path
 
 import requests
 from langchain_core.tools import tool
@@ -17,6 +18,57 @@ logger = logging.getLogger(__name__)
 RETRY_MAX = 1
 RETRY_BACKOFF = 1.5
 MAX_RESULTS_PER_SEARCH = int(__import__("os").getenv("MAX_RESULTS_PER_SEARCH", "12"))
+
+
+class CompanyCareerSearchInput(BaseModel):
+    company: str = Field(description="Target company to check on a first-party careers site")
+    max_results: int = Field(default=12, ge=1, le=25)
+
+
+@tool(args_schema=CompanyCareerSearchInput)
+def search_company_careers(company: str, max_results: int = 12) -> str:
+    """Use a company-specific or generic first-party search skill, never an ATS board."""
+    config_path = Path(__file__).resolve().parent.parent / "config.json"
+    with open(config_path) as config_file:
+        config = json.load(config_file)
+    if company not in config.get("target_companies", []):
+        return json.dumps({"results": [], "error": f"{company} is not a target company"})
+    site = config.get("company_career_pages", {}).get(company)
+    if not site:
+        knowledge_path = config_path.with_name("career_knowledge.json")
+        with open(knowledge_path) as knowledge_file:
+            official_domains = json.load(knowledge_file)
+        domain = official_domains.get(company)
+        if not domain:
+            return json.dumps({"results": [], "error": f"No company-owned domain for {company}"})
+        # These are discovery candidates, not assertions that an open role
+        # exists. The generic skill validates every redirect and job URL.
+        seed = config.get("company_career_seeds", {}).get(company)
+        pages = ([seed, f"https://{domain}/careers"] if seed else [
+            f"https://{domain}/careers", f"https://careers.{domain}/",
+        ])
+        site = {
+            "strategy": "generic",
+            "allowed_hosts": [domain, "." + domain],
+            "pages": pages,
+        }
+
+    from tools.company_careers import first_party_jobs
+
+    try:
+        jobs = first_party_jobs(company, site, max_results)
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("First-party career search failed for %s: %s", company, exc)
+        return json.dumps({"results": [], "new_count": 0,
+                           "duplicates_filtered": 0, "error": str(exc)})
+    results = [SearchResult(
+        source=job["source"], source_job_id=job["source_job_id"],
+        url=job["url"], title=job["title"], company=company,
+        location=job["location"], snippet=job.get("description", ""),
+    ).model_dump() for job in jobs]
+    logger.info("First-party career search (%s): %d relevant India jobs", company, len(results))
+    return _search_payload(results, max_results,
+                           None if results else f"No relevant India jobs on {company} career pages")
 
 
 def _canonical_identity(result: dict) -> tuple[str, str, str]:
@@ -176,7 +228,7 @@ def search_linkedin(url: str, max_results: int = 12) -> str:
             targets = json.load(config_file).get("target_companies", [])
         role_pattern = re.compile(
             r"\b(?:devops|devsecops|sre)\b|"
-            r"\b(?:site reliability|platform|cloud|infrastructure)\s+engineer\b|"
+            r"\b(?:site reliability|service reliability|platform|cloud|infrastructure)\s+engineer\b|"
             r"\bsoftware engineer\s*[,–-]\s*(?:infrastructure|cloud|platform)\b",
             re.IGNORECASE,
         )

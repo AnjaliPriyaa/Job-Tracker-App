@@ -6,6 +6,8 @@
     "Senior Cloud Engineer",
     "Site Reliability Engineer",
     "Senior Site Reliability Engineer",
+    "Service Reliability Engineer",
+    "Senior Service Reliability Engineer",
     "Infrastructure Engineer",
     "Senior Infrastructure Engineer",
     "Platform Engineer",
@@ -112,6 +114,38 @@
     "Zomato",
     "Zscaler"
   ],
+  "company_career_pages": {
+    "Apple": {
+      "allowed_hosts": ["jobs.apple.com"],
+      "pages": [
+        "https://jobs.apple.com/en-in/search?location=bengaluru-BGS&team=devops-e-site-reliability-SFTWR-DSR",
+        "https://jobs.apple.com/en-in/search?location=bengaluru-BGS&team=cloud-and-infrastructure-SFTWR-CLD"
+      ]
+    },
+    "Google": {
+      "allowed_hosts": ["www.google.com"],
+      "pages": [
+        "https://www.google.com/about/careers/applications/jobs/results/?location=Bengaluru%2C%20India&q=site%20reliability",
+        "https://www.google.com/about/careers/applications/jobs/results/?location=Bengaluru%2C%20India&q=cloud%20infrastructure"
+      ]
+    },
+    "Microsoft": {
+      "allowed_hosts": ["careers.microsoft.com", "apply.careers.microsoft.com"],
+      "pages": [
+        "https://careers.microsoft.com/v2/global/en/locations/bengaluru.html",
+        "https://careers.microsoft.com/v2/global/en/locations/hyderabad.html"
+      ]
+    }
+  },
+  "company_career_seeds": {
+    "Adobe": "https://careers.adobe.com/us/en/search-results",
+    "Cisco": "https://careers.cisco.com/global/en/home",
+    "Stripe": "https://stripe.com/in/careers/search",
+    "Meta": "https://www.metacareers.com/",
+    "Redis": "https://redis.io/company/careers/",
+    "Zepto": "https://www.zepto.com/s/careers",
+    "Zoom": "https://careers.zoom.us/jobs/search"
+  },
   "job_portals": [
     {
       "name": "LinkedIn Jobs - Bengaluru",

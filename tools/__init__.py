@@ -1,6 +1,6 @@
 """Agent tools for the job tracker."""
 
-from tools.search_tools import search_linkedin, search_web_jobs, search_ats
+from tools.search_tools import search_linkedin, search_web_jobs, search_ats, search_company_careers
 from tools.discovery_tools import discover_company_career_page, discover_ats_platform
 from tools.job_tools import fetch_job, extract_job_details
 from tools.evaluation_tools import evaluate_job
@@ -13,7 +13,7 @@ from tools.notification_tools import notify_user
 
 ALL_TOOLS = [
     # Search
-    search_linkedin, search_web_jobs, search_ats,
+    search_linkedin, search_company_careers, search_web_jobs, search_ats,
     # Query generation
     generate_linkedin_queries,
     # Discovery

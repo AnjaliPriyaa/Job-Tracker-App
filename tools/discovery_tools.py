@@ -35,9 +35,9 @@ class DiscoverCareerPageInput(BaseModel):
 @tool(args_schema=DiscoverCareerPageInput)
 def discover_company_career_page(company: str) -> str:
     """
-    Discover where a company hosts its job listings. Tries known ATS platforms
-    (Greenhouse, Lever, Ashby) and returns the working URL.
-    Use this when you want to find jobs at a specific company.
+    Discover a company's public ATS-hosted job board (not its first-party
+    careers site). Tries Greenhouse, Lever, and Ashby and returns a working URL.
+    Use this only for the separate ATS-board search path.
     """
     slug = _company_to_slug(company)
     headers = {"User-Agent": "Mozilla/5.0 (compatible; JobTracker/1.0)"}

@@ -36,6 +36,8 @@ def get_user_preferences(_: str = "") -> str:
         "target_roles": config.get("roles", []),
         "keywords": config.get("job_portals", [{}])[0].get("keywords", []),
         "linkedin_url": config.get("job_portals", [{}])[0].get("career_page", ""),
+        "first_party_career_strategy": "search_company_careers accepts target_companies; company-owned URLs only",
+        "custom_career_adapters": sorted(config.get("company_career_pages", {})),
         "exclude_keywords": config.get("exclude_keywords", []),
         "exclude_roles": config.get("exclude_roles", []),
         "exclude_levels": config.get("exclude_levels", []),

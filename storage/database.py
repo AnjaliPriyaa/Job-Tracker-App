@@ -85,6 +85,14 @@ def init_db() -> None:
             status TEXT NOT NULL DEFAULT 'running'
         );
 
+        CREATE TABLE IF NOT EXISTS career_source_state (
+            company TEXT PRIMARY KEY,
+            last_attempted_at TEXT NOT NULL,
+            last_new_count INTEGER NOT NULL DEFAULT 0,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
         CREATE INDEX IF NOT EXISTS idx_jobs_companies ON jobs(company_normalized);
         CREATE INDEX IF NOT EXISTS idx_sources_canonical ON job_sources(canonical_id);

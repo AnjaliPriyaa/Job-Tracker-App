@@ -23,6 +23,8 @@ Thumbs.db
 
 # Environment variables (contains secrets)
 .env
+job_tracker.db-shm
+job_tracker.db-wal
 .venv
 .venv/
 test_local.py

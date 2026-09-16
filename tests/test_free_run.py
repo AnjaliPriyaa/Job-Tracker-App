@@ -9,6 +9,51 @@ def test_career_company_rotation_is_bounded():
     assert _career_companies(config, 2, day=3) == ["E", "A"]
 
 
+def test_first_party_company_pool_uses_available_knowledge():
+    from free_run import _career_companies
+
+    config = {"target_companies": ["Apple", "Google", "Microsoft"]}
+    assert _career_companies(config, 6, day=1, available={"Apple", "Microsoft"}) == [
+        "Apple", "Microsoft",
+    ]
+
+
+def test_career_source_memory_prefers_unsearched_companies(monkeypatch):
+    from free_run import _career_companies
+
+    monkeypatch.setenv("FREE_CAREER_PRIORITY", "Apple")
+    config = {"target_companies": ["Apple", "Google", "Microsoft", "Adobe"]}
+    assert _career_companies(config, 3, available=set(config["target_companies"]),
+                             last_attempted={"Google": "2026-09-16T00:00:00+00:00"}) == [
+        "Apple", "Microsoft", "Adobe",
+    ]
+
+
+def test_career_run_does_not_fall_back_to_ats(monkeypatch):
+    import free_run
+    from agent.middleware import BudgetTracker
+
+    monkeypatch.setenv("FREE_CAREER_PRIORITY", "Apple")
+    monkeypatch.setenv("FREE_MAX_COMPANIES", "1")
+    calls = []
+
+    def fake_call(tool, args, budget):
+        calls.append(tool.name)
+        assert tool.name == "search_company_careers"
+        return {"results": [{"canonical_id": "company_career:apple:1"}],
+                "new_count": 1, "duplicates_filtered": 0, "error": None}
+
+    monkeypatch.setattr(free_run, "_call", fake_call)
+    monkeypatch.setattr(free_run, "_career_attempts", lambda: {})
+    monkeypatch.setattr(free_run, "_remember_career_source", lambda *_args: None)
+    result = free_run._discover("career", {
+        "target_companies": ["Apple", "Notion"],
+        "company_career_pages": {"Apple": {"pages": ["https://jobs.apple.com"]}},
+    }, BudgetTracker(), 12)
+    assert result[0]["canonical_id"] == "company_career:apple:1"
+    assert calls == ["search_company_careers"]
+
+
 def test_pending_retries_matched_jobs_after_notification_was_blocked(monkeypatch):
     import free_run
 

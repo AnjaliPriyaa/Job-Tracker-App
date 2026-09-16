@@ -41,7 +41,7 @@ jobs:
       env:
         RUN_CONTEXT: career
         MAX_NOTIFICATIONS: ${{ inputs.max_notifications || '8' }}
-        FREE_CAREER_PRIORITY: GitLab,Notion,Databricks
+        FREE_CAREER_PRIORITY: Apple,Google,Microsoft
         AI_PROVIDER: rules
         # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         # DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

@@ -147,11 +147,16 @@ if __name__ == "__main__":
         ),
         "career": (
             "Your focus: find DevOps, Cloud, SRE, and Platform Engineering jobs from "
-            "company career pages. You have tools to discover where companies post jobs, "
-            "search their ATS platforms, and evaluate candidates. LinkedIn search is also "
-            "available as a supplement. You decide which companies to investigate, which "
-            "tools to use. Prioritize a small set of likely companies and stop when "
-            "additional searches are unlikely to help."
+            "company-owned career pages using search_company_careers. "
+            "The tool uses a compact source knowledge base and verifies live jobs; "
+            "Do not substitute an ATS board or LinkedIn for this first-party source. "
+            "Evaluate a small set of promising jobs and stop when additional searches "
+            "are unlikely to help."
+        ),
+        "ats": (
+            "Your focus: find relevant jobs on companies' ATS-hosted boards. "
+            "Use discover_company_career_page and search_ats; keep this separate "
+            "from first-party company career pages."
         ),
         "full": (
             "Find DevOps, Cloud, SRE, and Platform Engineering jobs matching the "
@@ -164,7 +169,8 @@ if __name__ == "__main__":
 
     message = CONTEXT_MESSAGES.get(context, CONTEXT_MESSAGES["full"])
 
-    label = {"linkedin": "LINKEDIN", "career": "CAREER PAGES", "full": "FULL SEARCH"}.get(context, "FULL")
+    label = {"linkedin": "LINKEDIN", "career": "CAREER PAGES",
+             "ats": "ATS BOARDS", "full": "FULL SEARCH"}.get(context, "FULL")
     print("=" * 60)
     print(f"🤖 AGENTIC JOB SEARCH — {label}")
     print("=" * 60)

@@ -53,7 +53,7 @@ class BudgetTracker:
         self.tool_calls += 1
         self.tool_call_counts[tool_name] = self.tool_call_counts.get(tool_name, 0) + 1
 
-        if tool_name in ("search_linkedin", "search_web_jobs", "search_ats",
+        if tool_name in ("search_linkedin", "search_company_careers", "search_web_jobs", "search_ats",
                          "discover_company_career_page", "discover_ats_platform"):
             self.searches += 1
             if self.searches > self.max_searches:
