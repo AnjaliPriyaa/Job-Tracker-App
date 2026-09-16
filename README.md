@@ -45,7 +45,7 @@ agent.py (bounded LangChain agent loop)
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env: DEEPSEEK_API_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+# Edit .env: GEMINI_API_KEY, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 python agent.py
 ```
 
@@ -62,7 +62,9 @@ Edit `config.json`:
 
 | Variable | Description |
 |---|---|
-| `DEEPSEEK_API_KEY` | DeepSeek API key (free tier) |
+| `AI_PROVIDER` | `gemini` (default); set `deepseek` only when ready to resume DeepSeek billing |
+| `GEMINI_API_KEY` | Gemini API key; GitHub Actions currently uses this provider |
+| `DEEPSEEK_API_KEY` | Optional DeepSeek key, inactive unless `AI_PROVIDER=deepseek` |
 | `TELEGRAM_TOKEN` | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Your chat ID |
 | `MAX_MODEL_CALLS` | Outer agent turns per run (default `14`) |
@@ -105,6 +107,10 @@ Two independent schedules invoke the **same `agent.py`** with different run cont
 | `career-run.yml` | Daily 10 AM IST (4:30 UTC) | Career page discovery + ATS search |
 
 Both share the same SQLite state, tools, policies, and budget infrastructure.
+They currently use Gemini 2.5 Flash with DeepSeek commented out in the workflow
+files. Gemini has a free tier, subject to your account's rate limits. The
+workflows check out the latest `main` when they start, so a queued run does not
+try to push database changes from an outdated commit.
 
 ```yaml
 # linkedin-run.yml

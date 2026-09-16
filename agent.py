@@ -36,6 +36,17 @@ def _env_int(name: str, default: int) -> int:
         logger.warning("Invalid %s; using %d", name, default)
         return default
 
+
+def _selected_provider() -> str:
+    """Use Gemini unless DeepSeek is explicitly re-enabled."""
+    provider = os.getenv("AI_PROVIDER", "gemini").strip().lower()
+    if provider not in {"gemini", "deepseek"}:
+        raise ValueError("AI_PROVIDER must be 'gemini' or 'deepseek'")
+    key_name = "GEMINI_API_KEY" if provider == "gemini" else "DEEPSEEK_API_KEY"
+    if not os.getenv(key_name):
+        raise RuntimeError(f"{key_name} is required for AI_PROVIDER={provider}")
+    return provider
+
 # ---------------------------------------------------------------------------
 # Build the agent
 # ---------------------------------------------------------------------------
@@ -54,29 +65,27 @@ def build_agent():
     from agent.middleware import BudgetMiddleware, BudgetTracker, set_budget
 
     # Model
-    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    provider = _selected_provider()
 
-    if deepseek_key:
+    if provider == "deepseek":
         model = ChatOpenAI(
             model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
             temperature=0.1,
             max_tokens=_env_int("AGENT_MAX_OUTPUT_TOKENS", 700),
-            openai_api_key=deepseek_key,
+            openai_api_key=os.environ["DEEPSEEK_API_KEY"],
             openai_api_base="https://api.deepseek.com",
         )
         logger.info("Model: DeepSeek (%s)", os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
-    elif gemini_key:
+    else:
         from langchain_google_genai import ChatGoogleGenerativeAI
         model = ChatGoogleGenerativeAI(
             model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
             temperature=0.1,
-            google_api_key=gemini_key,
+            max_output_tokens=_env_int("AGENT_MAX_OUTPUT_TOKENS", 700),
+            thinking_budget=0,
+            google_api_key=os.environ["GEMINI_API_KEY"],
         )
         logger.info("Model: Gemini (%s)", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-    else:
-        print("❌ Set DEEPSEEK_API_KEY or GEMINI_API_KEY in .env")
-        sys.exit(1)
 
     # Budget — physically enforced by middleware
     budget = BudgetTracker(
@@ -168,7 +177,7 @@ if __name__ == "__main__":
     usage = TokenUsageTracker()
     model_name = (
         os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-        if os.getenv("DEEPSEEK_API_KEY")
+        if _selected_provider() == "deepseek"
         else os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     )
     AgentRunRepository.start(stats.run_id, context, model_name)

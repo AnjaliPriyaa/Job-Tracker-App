@@ -53,7 +53,7 @@ def _get_matcher():
         from langchain_openai import ChatOpenAI
 
         deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-        if deepseek_key:
+        if os.getenv("AI_PROVIDER", "gemini").strip().lower() == "deepseek" and deepseek_key:
             _matcher = ChatOpenAI(
                 model=os.getenv(
                     "DEEPSEEK_EVALUATION_MODEL",

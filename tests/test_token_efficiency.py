@@ -192,3 +192,29 @@ def test_agent_uses_bounded_single_agent_harness():
     assert "create_deep_agent" not in source
     assert "ModelCallLimitMiddleware" in source
     assert "ContextEditingMiddleware" in source
+
+
+def test_gemini_requires_explicit_deepseek_opt_in(monkeypatch):
+    import importlib.util
+
+    entrypoint = Path(__file__).resolve().parent.parent / "agent.py"
+    spec = importlib.util.spec_from_file_location("job_tracker_entrypoint", entrypoint)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    assert module._selected_provider() == "gemini"
+
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    assert module._selected_provider() == "deepseek"
+
+
+def test_gemini_never_starts_nested_deepseek_evaluation(monkeypatch):
+    import tools.evaluation_tools as evaluation
+
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setattr(evaluation, "_matcher", None)
+    assert evaluation._get_matcher() == "fallback"

@@ -25,6 +25,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: main
 
     - name: Setup Python
       uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
@@ -39,7 +41,10 @@ jobs:
       env:
         RUN_CONTEXT: career
         MAX_NOTIFICATIONS: ${{ inputs.max_notifications || '8' }}
-        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        AI_PROVIDER: gemini
+        GEMINI_MODEL: gemini-2.5-flash
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
