@@ -191,6 +191,36 @@ def test_location_accept():
     assert engine.is_valid_location("Job in Bengaluru, Karnataka")
     assert engine.is_valid_location("Hyderabad based role")
     assert engine.is_valid_location("Remote position")
+    assert engine.is_valid_location("About Us Visa is a global company")
+
+
+def test_policy_uses_structured_location_before_company_description():
+    from policies.job_policy import PolicyEngine
+
+    with DB_PATCH as mock_get_db:
+        mock_db = _mock_db_row([
+            {"canonical_id": "linkedin:4463332504"},
+            {"decision": "match", "confidence": 0.68},
+        ])
+        mock_db.execute.return_value.fetchall.return_value = [{
+            "location": "Bengaluru, Karnataka, India",
+            "description": "About Us Visa operates in San Francisco and Singapore.",
+        }]
+        mock_get_db.return_value = mock_db
+
+        engine = PolicyEngine.__new__(PolicyEngine)
+        engine._config = {"target_companies": ["Visa"], "exclude_roles": [], "exclude_levels": []}
+        engine.max_notifications_per_day = 20
+        engine.min_confidence = 0.6
+
+        with patch('policies.job_policy.JobRepository') as mock_repo, \
+             patch('policies.job_policy.NotificationRepository') as mock_notif:
+            mock_repo.is_notified.return_value = False
+            mock_notif.count_today.return_value = 0
+            result = engine.validate_notification(
+                "linkedin:4463332504", "Visa", "Senior SW Engineer - SRE",
+            )
+            assert result.allowed, result.reason
 
 
 def test_company_match_uses_name_boundaries():

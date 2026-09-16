@@ -54,7 +54,7 @@ _REJECT_LOCATIONS = [
     r'\b(?:Stockholm|Oslo|Copenhagen|Helsinki)\b',
     r'\b(?:Z[uü]rich|Geneva|Basel)\b',
     r'\b(?:UK\b|United Kingdom)\b',
-    r'\bUS\b',
+    r'(?-i:\bUS\b)',
 ]
 
 _ACCEPT_LOCATIONS = [
@@ -141,8 +141,11 @@ class PolicyEngine:
             (canonical_id,)
         ).fetchall()
         for src in sources:
-            loc_text = f"{src['location']} {src['description'][:500]}"
-            if loc_text.strip() and not self.is_valid_location(loc_text):
+            # A structured listing location is more reliable than company boilerplate.
+            # Scanning both together can mistake "About Us" or global office lists
+            # for the location of an India-based role.
+            loc_text = (src['location'] or '').strip() or (src['description'] or '')[:500]
+            if loc_text and not self.is_valid_location(loc_text):
                 return PolicyResult(False, f"Location validation failed for {canonical_id}")
 
         return PolicyResult(True, "All checks passed")
